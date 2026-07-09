@@ -228,6 +228,27 @@ input {
     width: 220px;
 }
 
+/* ============================================================
+   FIX: iOS/Android-Autozoom beim Fokussieren von Formularfeldern
+   ------------------------------------------------------------
+   Mobile Browser (v.a. Safari auf iPhone) zoomen automatisch in
+   die Seite rein, sobald ein Input/Select/Textarea mit einer
+   Schriftgroesse unter 16px fokussiert wird - und zoomen beim
+   Verlassen des Feldes oft nicht sauber wieder zurueck. Genau das
+   sorgte fuer das "komisch reingezoomt"-Verhalten z.B. beim
+   Hinzufuegen eines Produkts.
+   Diese Regel erzwingt auf schmalen (mobilen) Bildschirmen ueberall
+   mindestens 16px, unabhaengig von evtl. kleineren Inline-Styles.
+   Der Nutzer kann weiterhin jederzeit bewusst per Zwei-Finger-Pinch
+   zoomen - das wird durch touch-action:manipulation nicht
+   beeintraechtigt, nur der ungewollte Auto-Zoom wird verhindert.
+   ============================================================ */
+@media (max-width: 900px) {
+    input, select, textarea {
+        font-size: 16px !important;
+    }
+}
+
 .add-item-field {
     display: block;
     font-family: 'Lucida Console', 'Courier New', monospace;
