@@ -964,9 +964,55 @@ let hiddenProducts = [];
 // Einstellungen -> "KI-Bilderkennung" ein. Der Key bleibt nur lokal in diesem
 // Browser gespeichert (localStorage) - er wird nirgendwo sonst gespeichert
 // oder mitgesynct.
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_KEY_STORAGE = "lebensmittel_gemini_api_key_v1";
+const GEMINI_MODEL_STORAGE = "lebensmittel_gemini_model_v1";
 let aiRecognizedItems = [];
+
+// Kostenlos nutzbare Gemini-Modelle, zwischen denen bei Ueberlastung/Ausfall
+// manuell gewechselt werden kann (siehe showModelSwitchPrompt). Bewusst NUR
+// Modelle mit kostenlosem Kontingent - Pro-Modelle brauchen aktiviertes
+// Google-Cloud-Billing und wuerden sonst mit einem Abrechnungsfehler scheitern.
+const GEMINI_FREE_MODELS = [
+    { id: "gemini-flash-latest", label: "Flash" },
+    { id: "gemini-3.1-flash-lite", label: "Flash-Lite" },
+    { id: "gemini-3-flash-preview", label: "Flash (alt)" }
+];
+function getSelectedGeminiModel() {
+    try { return localStorage.getItem(GEMINI_MODEL_STORAGE) || GEMINI_MODEL; } catch (e) { return GEMINI_MODEL; }
+}
+function setSelectedGeminiModel(id) {
+    try { localStorage.setItem(GEMINI_MODEL_STORAGE, id); } catch (e) {}
+}
+
+// Unscheinbares Popup, das bei einem KI-Fehler (Ueberlastung, Token-Limit o.ae.)
+// anbietet, auf ein anderes kostenloses Modell zu wechseln und die zuletzt
+// fehlgeschlagene Aktion automatisch erneut auszufuehren.
+function showModelSwitchPrompt(retryFn) {
+    let current = getSelectedGeminiModel();
+    let options = GEMINI_FREE_MODELS.filter(m => m.id !== current);
+    if (!options.length) return;
+    window._pendingModelRetry = retryFn;
+    let color = getActionBarColor();
+    createModal(`
+        <div class="custom-modal-box" style="--modal-accent:${color}; max-width:260px; padding:18px; text-align:center;">
+            <div style="font-size:12px; opacity:0.55; margin-bottom:10px;">Modell gerade nicht verfügbar</div>
+            <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
+                ${options.map(m => `<button onclick="_switchGeminiModel('${m.id}')" style="background:none; border:1px solid #ccc; border-radius:16px; padding:5px 13px; font-size:12px; font-family:inherit; cursor:pointer; color:#555;">${_escapeHtml(m.label)}</button>`).join("")}
+            </div>
+            <button onclick="document.getElementById('modelSwitchOverlay')?.remove()" style="background:none; border:none; color:#aaa; font-size:11px; margin-top:12px; cursor:pointer; font-family:inherit;">abbrechen</button>
+        </div>
+    `, { id: "modelSwitchOverlay", closeOnBackdrop: true });
+}
+function _switchGeminiModel(modelId) {
+    setSelectedGeminiModel(modelId);
+    document.getElementById("modelSwitchOverlay")?.remove();
+    let label = (GEMINI_FREE_MODELS.find(m => m.id === modelId) || {}).label || modelId;
+    showToast("Nutze jetzt: " + label);
+    let retry = window._pendingModelRetry;
+    window._pendingModelRetry = null;
+    if (typeof retry === "function") retry();
+}
 
 // ── KI-Rezeptideen ───────────────────────────────────────────────────────
 // Nutzt denselben (eigenen) Gemini-Key wie die Bilderkennung. aiRecipeChatHistory
@@ -978,6 +1024,7 @@ let aiRecipeChatHistory = [];
 let aiRecipeSuggestions = [];
 let aiRecipeLoading = false;
 let aiRecipeError = "";
+let aiRecipeLastWish = "";   // letzter Wunsch-Text, fuer Retry nach Modellwechsel
 
 function getGeminiApiKey() {
     try { return localStorage.getItem(GEMINI_KEY_STORAGE) || ""; } catch (e) { return ""; }
@@ -2906,33 +2953,55 @@ Format: [{'name': 'Tomate', 'menge': 5, 'einheit': '', 'mhd': ''}, {'name': 'Jog
 Nutze kurze, deutsche Singular-Namen ('Tomate' statt 'Tomaten').
 einheit ist AUSSCHLIESSLICH eines von genau diesen fünf Werten - sonst nichts: leerer String '' (für reine Stückzahl, z.B. bei Tomaten, Eiern, Broten, Packungen, Dosen), 'g', 'kg', 'ml', 'l'.`;
 
-    let res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-        {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [
-                        { text: prompt },
-                        { inline_data: { mime_type: "image/jpeg", data: base64Data } }
-                    ]
-                }],
-                generationConfig: { responseMimeType: "application/json", temperature: 0.2 }
-            })
-        }
-    );
-    if (!res.ok) {
-        let bodyText = await res.text().catch(() => "");
-        console.error("Gemini HTTP-Fehler:", res.status, bodyText);
-        let reason = "HTTP " + res.status;
+    // Reihenfolge: zuerst das zuletzt erfolgreiche/gewählte Modell, danach die
+    // übrigen kostenlosen Modelle. Bei der Bilderkennung wird - anders als bei
+    // Rezeptideen/Haltbarkeit - NICHT nachgefragt, sondern bei einem Fehler
+    // (Überlastung, Limit o.ä.) automatisch stillschweigend das nächste Modell
+    // probiert, da man beim Einkaufen/Fotografieren keine Zeit für ein Popup hat.
+    let selected = getSelectedGeminiModel();
+    let modelOrder = [selected].concat(GEMINI_FREE_MODELS.map(m => m.id).filter(id => id !== selected));
+    let lastErr = null;
+    let data = null;
+    for (let modelId of modelOrder) {
         try {
-            let errJson = JSON.parse(bodyText);
-            if (errJson.error && errJson.error.message) reason = errJson.error.message;
-        } catch (e) {}
-        throw new Error(reason);
+            let res = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                { text: prompt },
+                                { inline_data: { mime_type: "image/jpeg", data: base64Data } }
+                            ]
+                        }],
+                        generationConfig: { responseMimeType: "application/json", temperature: 0.2 }
+                    })
+                }
+            );
+            if (!res.ok) {
+                let bodyText = await res.text().catch(() => "");
+                console.error("Gemini HTTP-Fehler (" + modelId + "):", res.status, bodyText);
+                let reason = "HTTP " + res.status;
+                try {
+                    let errJson = JSON.parse(bodyText);
+                    if (errJson.error && errJson.error.message) reason = errJson.error.message;
+                } catch (e) {}
+                throw new Error(reason);
+            }
+            data = await res.json();
+            if (modelId !== selected) {
+                setSelectedGeminiModel(modelId); // fuer naechste Aufrufe merken
+                showToast("Bilderkennung: automatisch auf anderes Modell ausgewichen");
+            }
+            lastErr = null;
+            break;
+        } catch (e) {
+            lastErr = e;
+        }
     }
-    let data = await res.json();
+    if (lastErr) throw lastErr;
     let text = (data.candidates && data.candidates[0] && data.candidates[0].content &&
                 data.candidates[0].content.parts || [])
         .map(p => p.text || "").join("");
@@ -3001,15 +3070,15 @@ function openAiRecipeIdeas() {
 function renderAiRecipeIdeasPage() {
     let color = getActionBarColor();
     let cardsHtml = aiRecipeSuggestions.map((r, idx) => {
-        let usedTags = (r.usedIngredients || []).map(n =>
-            `<span style="background:rgba(82,129,83,0.15); color:#3f8a49; border-radius:6px; padding:2px 7px; font-size:11.5px;">${_escapeHtml(n)}</span>`
+        let usedTags = (r.usedIngredients || []).map(ing =>
+            `<span style="background:rgba(82,129,83,0.15); color:#3f8a49; border-radius:6px; padding:2px 7px; font-size:11.5px;">${_escapeHtml(_aiIngredientLabel(ing))}</span>`
         ).join(" ");
-        let missingTags = (r.missingIngredients || []).map(n =>
-            `<span style="background:rgba(179,90,90,0.13); color:#a34a4a; border-radius:6px; padding:2px 7px; font-size:11.5px;">${_escapeHtml(n)}</span>`
+        let missingTags = (r.missingIngredients || []).map(ing =>
+            `<span style="background:rgba(179,90,90,0.13); color:#a34a4a; border-radius:6px; padding:2px 7px; font-size:11.5px;">${_escapeHtml(_aiIngredientLabel(ing))}</span>`
         ).join(" ");
         return `
         <div style="background:white; border-radius:16px; box-shadow:0 2px 8px rgba(0,0,0,0.08); padding:16px; margin-bottom:12px; text-align:left;">
-            <div style="font-weight:bold; font-size:15px; margin-bottom:4px;">${_escapeHtml(r.title || "Rezeptidee")}</div>
+            <div style="font-weight:bold; font-size:15px; margin-bottom:4px;">${_escapeHtml(r.title || "Rezeptidee")}${r.servings ? ` <span style="font-weight:400; opacity:0.5; font-size:12px;">(${parseInt(r.servings) || r.servings} Portionen)</span>` : ""}</div>
             <div style="font-size:13px; opacity:0.75; margin-bottom:8px;">${_escapeHtml(r.description || "")}</div>
             ${usedTags ? `<div style="margin-bottom:5px; display:flex; flex-wrap:wrap; gap:4px;"><span style="font-size:11px; opacity:0.5; margin-right:2px;">vorhanden:</span>${usedTags}</div>` : ""}
             ${missingTags ? `<div style="margin-bottom:8px; display:flex; flex-wrap:wrap; gap:4px;"><span style="font-size:11px; opacity:0.5; margin-right:2px;">fehlt noch:</span>${missingTags}</div>` : ""}
@@ -3022,14 +3091,14 @@ function renderAiRecipeIdeasPage() {
         <h1 style="display:flex; align-items:center; justify-content:center; gap:10px;"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAVkAAAF3CAYAAAAPVDidAAABemlDQ1BJQ0MgUHJvZmlsZQAAeJx1kc8rRFEUxz8zaMRoFAsLi0nDamhQYmMx8quwmHnKYDNzZ96Mmhmv90aSrbJVlNj4teAvYKuslSJSspYlsUHPeTNqJHNu99zP/d5zTveeC24tq3JWdQhy+YIZGQ37Z2Kzfs8zHlz4CDEQV5YxGR3RqGjvtxIrdt3p1Koc96/VJ1OWAlet8KAyzILwmPDEcsFweEu4WWXiSeET4aApFxS+cfREiZ8cTpf402FTiwyBu1HYn/7FiV+sMmZOWF5OIJddUj/3cV7iTeWno7K2yWzFIsIoYfyMM8wQfXQzIL6PTnrokh0V8kPF/CkWJVeJN1jBZIE0GQoERV2S6ilZddFTMrKsOP3/21dL7+0pVfeGoebRtl/bwbMJXxu2/XFg21+HUPUA5/ly/uI+9L+JvlHWAnvgW4PTi7KW2IazdWi5N+JmvChVyXTrOrwcQ0MMmq6gbq7Us59zju5AW5WvuoSdXeiQeN/8N7YhaApzjkOJAAAdqUlEQVR42u3de7ReVX3u8ee3c4EkBEICEQQS7hChgG2Vi00gwaEHAUF7VJDLaSsgAtXWikXFW+s5pwqCDlsrgsWCVBB7FLmItRINQricUwG5GCRcYrgJIQkJCZfsPOePdwY2O9mbnb3nWu+6fD9j7KHDEd+11m/N+bzznWutuUIYFttbStpD0p6SdpE0VdLmkjaTNHEDfxOoGipmpaQVff6z/9/vJT0gaYGkBRGxlJJtvKAEgwZpSNpB0n4pUPv+bU2F0DJPrQvcPn93SPpdRJjyELJDDdbtJc2WNCf9TaMqwKAekTRX0g2S5kbEYkpCyPYN1a37hepuNAtgRO7vF7pPEbLtC9bJkt4r6XhJB/FlAxTX3STdLOlSSd9r47xua8LF9lhJh0k6UdIRksbS/oFSvSjp6hS4P46IFwnZ+gdrSHpTCtZjJE2hnQOVsETS5ZIukXR7ky+cNTJkbY9OoXqmpH1oz0Cl3SXpS5KuiIg1hGy1w3WTNGo9S9LOtF2gVh6U9A+SLomIFwjZaoXreEknp5HrdrRVoNYelXSOpAsjYhUh291wnSjpDEl/LR4OAJrmKUnnS/paRKwkZMsN15B0gjrzOK+jLQKN9qSkj0u6tI4XyGoXsrb3lvR1STNpe0CrzJN0ekTcXaed7qnT1IDtc9V5VpqABdpnlqQ7bJ+bpgoZyWacGniPOnMzr6edAVDn4thfS/p+1acQKh2yabGWiyS9nTYFYAN+IumkKi9KU9mQtX24Ok+DTKYdARjEEkknRsR1Vdy5ys3J2h5j+xxJ1xCwAIZgiqRrbX/J9hhGsoMH7HRJV0jan3YDYBhukXRMRDxCyK4fsEdJ+rakSTU6oZa0SJ0V4u+X9Nv002XFAH+r0/8H6Ha/H6cNvyZpYhoZ7qbOG0B2V2fh+jrd7rlU0p9HxFWErF5ezOWLkj5a8RP3gjrrYs6TdE8K1t9GxGr6LJrM9rg+obuXOrdSHSRpk4rv+pclndXtRWeiyydvvDrLnR1ZwRO0RtKtemWF9/kR8TxdDpBsbyrpQL3yRpE3SxpdwV29Ok0fdG0NhOjiSZqcCnBQxUarV0m6TNINdX5eGii5P2+WwvY4SUdVbJR7k6R3RsQzbToh29u+x9XxC9sn2Z5EdwFG3L8npf40r0J9/O50330rTsAM24sqUPTf2f607Z3oFkBh/X2n1M8WV6DPL7I9o+kFP9D2ki4X+oH0LbsJXQAore9vYvtk2wu73P+X2D6gqUU+1PaqLv9ceH+6mwFAd3JgtO3jujxd+JztQ5tW2P3TgXXDnbaPtt1DEwcqkwk9qV/e2cWg3b8pxZzRpSmC5bY/zMgVqPzI9sOpv5bt6drP0dreIV1gKtt3bG9DEwZqkxXbpn7bjYthO9S1aFNs31tywe6xfQhNFqht2M7uUm5MrluhJtieX2KR1tr+vO2xNFOg9kE7NvXntSVmyM3pCdTazLFcW2JxHrc9h6YJNC5s59h+osQsubYW13Bsn19iUX5qm7fVAs0N2m1s/2eJmXJe1QvyrpIK0Wv7bNujaIZA44N2VHpqrLekfDm6qoXYyfayEgrwDBe3gFaG7WzbS0vImKWVe9w+TVTfVsLBL7a9F80NaG3Q7lXSOgi3VepCeknzsPfankYzA1oftNNs39ea+dn0aFzR5tueQvMCkHJniu1bSsieo7p9oNNLmCO5xvYEmhWAfvkzoYTbRZemF7x25QAj3UJVpOuq+IpfAJUJ2jEpJ4q+VTS6cXDHljBFwAgWwFBGtEU/YXpM2Qe1RXrSimeJAVQhaIteK+Vx21uUeUBfLXhVnO1pNgA2MpeKXvXvK2UdyB8W+OTFEjf9HTwAisynItev7rX9xqIPoMf2rQUewCyaCYAR5tTBBQ4Ebyn0LSu2TylwKP4JmgeATFn1yQKz6uSidnqL9LqGIlzPO7gAZP7V/ZMCX1sz5ItgGxNsH5ZUxFNXj0k6ISLW0jQA5JDy5ISUL7lNkfSXQ96XIX4rTJT0sKTct1WtlXRIRNxIswCGPEqbIGkXSTtK2lLS8ylMFkp6PCJMlV6u1SxJczdyQDkUz0iaHhErX+sfDnUV8FMLCFhJ+iwBCwwYENMkzZS0awrVdX+DLVS/2vaDKXDX/d0h6baIeKmFI9p5tj8r6e8zf/TklIvn5jjR4wp6BcSveWQWWK+/7WD7C7Z/k7m/Lbf9fdtva9v1j/To7d0FPaAwLscOnlHQ5PGf0KWAl9cBmW37322vKWFlqQW2P1LqE0zdr/HMgmp5+kh3bGxBT1BcTNcC4eqJtk9Lj5F3w0rb37D9By2p97cLekJ17Eh26qSCXh+zNV0MLQ7Xcek+zuWujutsv6HhdZ+a8ie3D4zkJ0wRq4+fQjdDiwP2T2w/5GpaY/t/N/laie0PFlC3+4a1FKLttxSwM/+Xhw7Q0nAdld6w3Ovqm297x4aeh56UQ7kdNNA2Bwu8Ews4xs/x0AFaGLCvl/RTdW4jqsMg4wBJv7L9p007Fyl/Pl/ARw+YlzFAo9hU0hOScl59vFPSG9tyo7Tt0ZI27fc/v9DGexU3NBUlaVy/wLGkVU1rH7YPk/Svkup6HeKfJf1NRKxuWPv7laR9M37sMknbRsTzQ92J9xQwnP7vDQ+O7Wx/NL2q4pFBbsV5yvZNtj9ve1+1QLpP8QjbF6f7o58doDar0u1Fl6Q2OK7Gxzza9jluhrts796wNtndjLN9deaN39vUuVjbk2x/xfZLw6zNVbb3aHDAHm37gWHWZrHtv6hb27G9qe0fuFmetv3mBrXLUQVc2P/RUDc+tYAbok9oaIC8IY1aR+r5po3000jugkzt5yrb42t03Fe7mZ61vV+D2uiJmevzku2pQ9nwRzJv+ME0P9m0gD0w8wrsa22f2pDaFDGS+6XtLas+12f7Ijfb47Z3atA01oOZ6/Ph/tvZ0M+w4zIfyzcjYk3DAnZrSdcp76I5Iemfbb+1ASU6V9LRmT/zLZIuqfhxf07SB9Rs20i63vZWdT+QdBH6wswfe9yGOnbf8NhG0uM580id5cB+17CQ/Zakvyjo4xdI2iciXqxpbf5Q0u0q7lalIyPimgoe9wclfUPtcYukQyNiVc378jR1lnGNjB+7bUQ8MVDIHivp3zJu7GcR8dYmtSx3XqT2XwVv5q8i4qs5fr5Kmi5pJ0k7SOr/jPVyddYhvScilmWqz88lHVxgbRZK2iMieivUJo6S9H9Uj3tgc7pG0rvq/kvV9s8kzcn4kcdGxOUDbezCzPMTJzatVdn+VgnzXg+M5Ip6up3si7YfHuL2em3Ps33qSBa7sL1PSfOCR1SoPRxke7Xb68JhPVJarT79PzLX5JuDbWxhxg09Z3uzhgXsWNvLSmq8bxrG/o2y/al0v+lwLbT9tmHW53+VVJvvVKQ9bONi1lqum9Nq3q8nprzKNkjq+/k9fTa0o6SdM+77vw/l1Qw1c5DyPgU3mCM2sqFsKulKSV9Q52mq4dpZnQsbw7nT4fCSanN4t++dTaO3b2nwtxS0xfm2Z9R15yNiRZruyWUX29PXC1lJszPv+3cb2Jh2K3Fbu25Ehx8n6XpJ78rV7tS50+ETG7EPUWJ9JqmY1yFtjHdLegf5Kqkz1/9PNZ82+LfMnzd7QyGbc+L3JUm/aGBjmlritjZmhHSWirnY9D9t/9EQ/+2EEY6gi6xP9p+Xkr4q9A+VY2u8//NSbuUy51Uhm76Bcobs/Lrf2jGAUVXblu1dJP1tUb+k0gilp2K16cb2+vqMpO3I1fWc55q+0iYinlPntrRsIbtuZL+u8+wo6fUZN3AD7a00n5a0SYGfv7+kIynzy19qe0v6Kyox4K+Lv6vx/ufMre1Srr4csvtUeGcxcIefJOmYEjb1Qar98i++r0saTTUGdEa6l7ztIStJf9A3ZHOuArVK0q20tVIcVvAodp232t6ccusESTMpw6B61LloWscHM26RlHPd3D2KCtkb6/pIaA3NLmk7Y9RZO6DNo9iJ6qzJgNe2v6Q/q9tOp9y6saiQ3TPjB99EGyvN9g3dViV/Bqu+bzfohs/U9IWMOfNrz6JGsvfRvkozqcRtbdnWIqelOv+S5rZRpks6qob7nTO/OiNZ21MkTcn4wQtoX2iYIyRtSxk2Wh0vmObMr61sT+7JPIq1pAdoWyAsoM4F011rts+/TTmWbTSbO2QfadJbLYG0psfbqcSwnVynnU35tSh3yOZ8lQRTBWiak5R3Qee2+fORLJ/ZgCmDnXsk5XyNxG9oU2jQKHaMmv86maJtrfyvIipazhyb0iNpYsYPfJA2hQY5Up13WmFk6janvTDjZ03MHbLLaE9okFMoQRZzbO9Wo/1dXuWQXUF7QkOmCraR9DYqkc3xNdrXnDlGyAIDeIe44JXTETXaV0IWKAELweS1X1r/gZAlZAFJLV8QpwA9kg4gZEduJW0JdWd7qsp9nxtfXA0P2QmMZIFXOZASELKZbNajvJP7L9COQBhgAAfYHlWD/cyZY9HDeQcI2ZJspvRKljYhZIE+bG8q6Y+pBF9ghCxQjD+SNJYyELKELFCMAyhBoVp3UZGQBV5tT0pQqB1tjydkgfbanhIUrlWv8iFkgVfbihJQY0IWKM4USkCNCVmAAKDGhCxQL+l1M5tTCUKWkAWKMZkSELKELEDnp86ELEDnB3UmZIFX4/YtQpaQBQq0JSUoRavmvglZ4BWjKQF1JmSB4rDofDmeJ2SBdlpCCagzIQvQ+akzIQvQ+UGdCVng1Z6mBIQsIQsUZ5mktZSBkCVkgQJExFpJS6kEIUvIAgQANSZkAQIA1JiQBV6Ni1+ELCELFOhhSlColyQ9SsgC7XU3JSjUfRGxhpAF2utmSkB9CVmgOPeqc78sinETIQu0WLpXdj6VIGQJWYAgqJvH1cILi4QssD7mZQuqa0SYkAVwm6ReysAvBEIWKEBEPCfpV1SCkCVkAQKhLla39YuLkAU27OeUIO+XVkS8RMgCWOc/JK2iDNn8sK0HTsgCGxARqyRdQSWyeEHSdwlZAP19kxJkcWVEPNPWgx/N+a+srWwf/Rr/ZnKJ+7PXa+zP+Aaeg1sl3SVpH5rjiFzQ5oMnZKtrb0k/qND+nJj+2jRlYNsXSPonmuOw3auW36nBdAEwuMvEBbARjWLb+JQXIQsMfTS7XNLlVGJYnpd0aduLQMgCQxiNUYJh+V5EtP7tv4Qs8Npul3QHZeDLiZAFCpDmFL9EJTbKTWJdXkIW2JifvpLupAxD9sm2X/AiZIGNG832SvoQlRiSSyNiHmUgZIdjIiVoddDOl3QRlRjUcklnUgZCdri2oQTVybwubfcsSUso/6DTBE9SBkJ2uDanBJUxqUuj2SWS/pbyb9D/E3cUELIjNIYSVMa4Lm77YnHlvD9L+lCauwYhO2wrKUFlPNWtDafXhn9I0lpOw8u+ERG3UwZCdqQepwSV8Vw3Nx4Rd0r6MqdBkvSYpE9RBkKWkG3ez9NuO1udN9u2Wa+kY3l8lpDN5UVKwLnoM5p9UdJRkh5u8Xk4hXtiCdmcnqAEnIt+QfuEpLernbd1fSYi/oWmSMjm9CAlqEbARsTqquxMRNwv6XB1XnvdFhdI+gJNkZDN7b8kPUsZum5u1XYoIm6V9F515iib7ipJp7M2ASFbREd6UdK1VKLrfljR9nGNpFMbXvub1bnQxf2whGxhWPKuu+5Xtd591j9oL5L06YbW/l5J76zSVA0h28zR7B3qPPGD7vhYRLxU8TbyBUkfbVjdb5U0Kz1WDEK2cB9RZ34WJf+KiIira/JlfL6kI9SMuw4ukDSbgCVky+xAKyQdJukBqlGai9VZAatO7eRaSftK+kVNa/6spPdGxKlMERCy3ehAv5c0U9J3qEahVkr6mDo3vbuG7eRRSYdK+pzqtdbBbZL2i4graYKEbDc70BMRcYKkWargbUU1t1rShZL2iIgvR8SaGreT3oj4vKQ56jznX3XnSJoZEQ/RDDOcf9u9GcN2QkSsamsxbe+qzmOWB0vaVtIWBW9yB0mblnR4T0sq8vl0q7Oy1kOSrpd0bUQsa2Ab2UrS1yQdU8Hde0jSaRFxfZtD0fZ45VuAaK1s9zqf8XxvldoYbnZ5Pk7Fs567g2z/zNXwmO0zbW/KmemEbMba9jJdAHRnCuHmiDhU0t6Svq7urFV8o6T3SZoeEedExPOcmfwIWaC7YXtPRJwuaTtJK0rc9MciYlZEfK/q9x0TsgByhO2zksq8nvEIVSdkAYCQBQAQsgBAyAIAIQsAIGQBgJAFAEIWAEDIAgAhCwCELACAkAUAQhYACFkAACELAIQsAICQBQBCFgAIWQAAIQsAhCwAELIAAEIWAAhZACBkAQCELAAQsgBAyAIACFkAIGQBgJAFABCyAEDIAgAIWQAgZAGAkAUAELIAQMgCACELACBkAYCQBQBCFgBAyAIAIQsAhCwAgJAFAEIWAAhZAAAhCwCELACAkAUAQhYACFkAACELAIQsABCyAABCFgAIWQAgZAEAhCwAELIAQMgCAAhZACBkAYCQBQAQsgBAyAIACFkAIGQBgJAFABCyAEDIAgAhCwAgZAGAkAUAQhYAQMgCACELAIQsAICQBQBCFgAIWQAAIQsAhCwAgJAFAEIWAAhZAAAhCwCELAAQsgAAQhYACFkAIGQBAIQsABCyAEDIAgAIWQAgZAGAkAUAELIAQMgCAAhZACBkAYCQBQAQsgBAyAIAIQsAIGQBgJAFAEIWAEDIAgAhCwCELACAkAUAQhYACFkAACELAIQsAICQBQBCFgBKFblD1hk/bxPOD4Cay5lj7pH0XMYPnMj5AVBzOXNsZY+kFRk/cDPOD4Cay5ljK3KHLCNZAIxkCVkAIGQBgJAlZAEQsuWF7CTOD4Ca26LKIbsz5wdAze2SO2SfzviBe3J+ANRczhxb0iPpoYwfuAfnB0DN5cyxB3skLcj4gdNtj+McAaijlF/TMn7kgtwhG5J25VQBqKndlHeBmAU9EbFE0hKmDAAga349HRHPrFvqMOdodgbnCUBN5cyvBdIr68n+JuMHv4XzBKCmcubXb/qGbM6R7EzbYzlXAOok5dbMokayOUN2vKT9OWUAauYASTnvjnpVyN6VeWfncL4A1Ezu3Pp135B9WNJjhCwAQjaLR1OudkI2IizphowbOND2eM4ZgDqwPSFNF+RyQ8rVV72tNmfIjpF0MKcOQE3MSrmVLWTX/ZeiQlaSjuW8AaiJ92f+vLnrhWxEPCLpwYwb+VPbvFgRQNWnCiZKenfGj1yY8nS9kWzu0ez4zDsOAEV4d8qr7FMFRYesJJ3I+QNQcblzatCQnZt5Y3Ns78A5BFDRqYJpkmZn/ti5A4ZsRDwh6faMGwtJx3EqAVTUccq7tOFtEfHkYCNZSbos80GcYns05xJAxUaxYySdnPlj18vPDYXsdyX1ZtzoTuJ2LgDVc2zKp1zWSLr8NUM2In4v6ceZD+aTtns4p9ktK3FbSyk357NBo9hRkj6R+WN/nPLzNUeyknRJ5o3vKW7nKsLiErf1KOXmfDbIu5X/7dobzM2BQvZqScsz78DZtoN+lNXPS9rOS5JuotyFm1vSdh6XdH+LR7Eh6ewCfoVcM+SQjYjnJV2ReSf2lXQ4/SjvzxNJL5SwnZ9FxHLKXbgflLSdH0bE2hbX+QhJ+2T+zCtSbg55JFvElIEkfY652XwiYmkBX4Yb8k2qXcr5vFfSL0vY1AUtHsWOkvTZAj76kuHsTNi+z/mdQnfK2mh2tf2Ci3MrX4ylns+DXawrWl7fDxZQ0/uGPRVq+6QCdugZ21PpTlkbzt8X1CHX2v5jKlz6+bysoPO50vb2La7rVNtLC6jrB0ayU2Nt/66AnbqYrpS18Yy3Pa+A8/QpqtuV8/m6An5F9to+oeV1/XYBfWTRiF8ca/uMgr5VZ9KdsjagcbZ/mHEEexpV7er5nGL7lkznc7Xtd7a8nrMKyrHTc3XeJwrYuV+nx9qQryGNtv0Z26tGcF4etH0Y1azE+Zxg+2u214zgfN5h+00tr+MY23cXkGGP2x6XayfPLOhb4Gy6UiGN6vW2z02BOdSR6y9tnzbinz4o4nzuYfuC1KmH4iXb/2H7/Vy0lGyfXVB+fWwo248h7uREdd68ODnz8a+VdEhE3EhXKqRxhTrPZu8qaVtJm/b7J8vUeUvxPRHxDBWr/PnskbR7Oqfbav13Ui1R50muuyNiBRXrTBOo85BH7i+bZyRNj4iVOXf20wV9Gzxqe2uaA4DMATs15Us9foXb3sL20wXt8PX8rAGQc9Rv+ycF5dXTtrcoasdPKfAm6U/QNABkyqpPFphVJxe54z3pCaAi9No+mOYBYIQ5dXDKkyLcUvivbttvLPAAltieQTMBMMx8mpFypKiB4BvLOpCvFjgUX8TLFwEMI5d2KOgJ1XW+UubBbLER9+wNx722p9BsAAwxk6ak3CjKY7Y3L/ugji14taD5tifQfAC8RhZNyPgI8kCO6caBhe2fFnxg1/HoLYBBcmhMyoki/bRrb3WxPb2gpcP6upYRLYABRrBFB+xS29O7faBHu3jzmaMF0Cd3ppQwRWDbR1XlgM8v4WDvsz2N5gW0PmCnFfTWlv7Oq9JBj7V9WwkHvdj2XjQzoLUBu3fKgaLdWrkV6WzvZHtZCQe/1PYhNDegdQE7u4RrQOsyZqeqFuFdLkdvWhVsFE0PaHy4jkqL0feWlC9HV70g57s8/2n7dTRDoLEBu03q52U5rw5FGZ1uuyrLE7bn0ByBxgXsoQW9+mqw20VH16U4E9JtV2VZa/vveHUK0IhwHZv689oSM+Rm2+PrVqiinyUeaM2DQ2imQG0DdnYXcuMe25PrWrCiV8UZyGW2t6XJArXJim1Tvy3bItvb1714Ra7vOJjltj9SmzkWoJ3hOjr10+VdyIinbe/ZlELub/s5d8ed6dYy3iEGVCcTelK/vLNLufCc7f2bVtRDba9y99xt+zhGtkDXR67Hp3lQdzFgD21qgQ/o0tRBXwttn2x7E5o8UFrf38SdF7Eu7HL/X2L7gKYXe0aabO62xempsZ3oAkBh/X3n9LTW4gr0+UWNmYMdQuG37/LPhf7mpdHtJLoFMOL+PSn1pxsr1Mfv7tZdBNHFEzFZ0o8kvaVC7eOFtE/fkTQ3IlbQZYAh9eeJkmZLOl7SOyVVaTruJklHRsTSVoVsOjHjJV0u6cgKtps1km6TNFfSDZLmR8RquhMg2R4n6UBJc9LfmyVVccGmqyW9r5t9NypwskZL+gdJf1PxdvWCpPmSfiHpXkkLJP02IlbR5dDwQB0vaTdJe0h6g6SDU8BW/eLxlyWdFRFrurkTUaETeZSkb0uaVLM2uCgF7v3p7xlJKwb4WyXJdFt0WUgaL2kzSRMlbZ7+c93fZEm7p1DdXVLd3kiyVNKfRcSPqlLsKn1jTk/TBwfQDwAMwy2SjomIR6qyQ5V6CioVZpakc2grADbSlyTNqlLAVm4k229Ue7ikf5XEW2oBDGaJpBMj4roq7lxln+ePiGsl7SfpJ7QhAAO4XtJ+VQ3YSodsCtrFkg6T9F5Jj9KeACSPSnqPpHeknKisyq9MFRGOiCslzZB0rqRe2hfQWmtSDsyIiO9HROXv1om6Vdj23pK+Lmkm7Q1olXmSTouIe+q007VbYzUi7lbnZugTJT1JuwMa78nU3w+pW8DWciTbb1S7maQzJH1U0ta0RaBRnpJ0nqR/jIiVdT2IaMKZSI/9nSTpTEnb0zaBWluszr3yFzXhsfVo0plJC3GfIOkTknamrQK1slCddUwuiYgXm3JQ0cQzlRadeZ+kj0vah7YLVNpdkr4o6XvdXsyFkN34sA1Jb0qj22PF02NAVSyR9F1Jl0q6vQ63YhGyrx24YyX9N3WuUh4paSztHCjVi+osin+ppOubNCVAyK4fuFuq8xTZ8eq8mSFo/0Ax3U2dNxNcKunKbr2dgJDtbuBuLekQvbLC++70C2BEFuiVN4r8PCKeanMxGMGtH7rbqfOuonWhO52qAIN6JAXqDeq8G491RgjZjQrdaZL2VWeV+L5/U6kOWub3aZTa9+/OiFhEaQjZIsJ3yzS1sKekXSS9Tp1Xd6x7pUf/v82oGqrUhCWtTH8belXSSnUeZ30ghen9bZxPzeH/AxPD74aPsChnAAAAAElFTkSuQmCC" style="width:26px; height:26px; vertical-align:middle;"> KI-Rezeptideen</h1>
         <p class="sub" style="max-width:340px; margin:0 auto 14px;">Basierend auf deiner Speisekammer, bald ablaufende Produkte zuerst.</p>
         <div style="max-width:400px; margin:0 auto; padding:0 14px;">
-            ${aiRecipeLoading ? `<p style="opacity:0.6; display:flex; align-items:center; gap:6px;"><img src="data:image/png;base64,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" style="width:16px; height:16px; opacity:0.6;"> Rezeptideen werden geholt...</p>` : ""}
-            ${aiRecipeError ? `<p style="color:#c0392b; font-size:13px;">${_escapeHtml(aiRecipeError)}</p>` : ""}
-            ${cardsHtml || (!aiRecipeLoading ? "<p style='opacity:0.6;'>Noch keine Vorschläge.</p>" : "")}
-
-            <div style="display:flex; gap:8px; margin-top:14px;">
+            <div style="display:flex; gap:8px; margin-bottom:16px;">
                 <input id="aiRecipeWishInput" type="text" placeholder="weitere Wünsche (z.B. vegetarisch, schnell)..." style="flex:1; min-width:0; border-radius:12px; border:1.5px solid #ddd; padding:9px 12px; font-size:13px; font-family:inherit; box-sizing:border-box;">
                 <button onclick="sendAiRecipeWish()" ${aiRecipeLoading ? "disabled" : ""} style="background:${color}; color:white; border:none; border-radius:12px; padding:9px 16px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace; font-size:13px; font-weight:bold; flex-shrink:0;">Senden</button>
             </div>
+            ${aiRecipeLoading ? `<p style="opacity:0.6; display:flex; align-items:center; gap:6px;"><img src="data:image/png;base64,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" style="width:16px; height:16px; opacity:0.6;"> Rezeptideen werden geholt...</p>` : ""}
+            ${aiRecipeError && !aiRecipeLoading ? `<p style="color:#c0392b; opacity:0.8; font-size:12.5px; margin:0 0 12px;">${_escapeHtml(aiRecipeError)}</p>` : ""}
+            ${cardsHtml || (!aiRecipeLoading ? "<p style='opacity:0.6;'>Noch keine Vorschläge.</p>" : "")}
+
             <button onclick="openRecipes()" style="width:100%; background:none; border:none; color:#888; padding:14px 0 4px; cursor:pointer; font-family:inherit; font-size:13px;">← zurück zu recipes</button>
         </div>
     `;
@@ -3039,6 +3108,7 @@ function renderAiRecipeIdeasPage() {
 // sonst ein zusätzlicher Wunsch im laufenden "Chat" (Kontext bleibt erhalten).
 async function fetchAiRecipeIdeas(userWish) {
     let apiKey = getGeminiApiKey();
+    aiRecipeLastWish = userWish || "";
     let promptText;
     if (!aiRecipeChatHistory.length) {
         let pantryList = buildPantryListText();
@@ -3046,13 +3116,19 @@ async function fetchAiRecipeIdeas(userWish) {
 ${pantryList}
 
 Schlage 4 unterschiedliche, konkrete Rezeptideen vor, die möglichst viele dieser vorhandenen Zutaten nutzen. Bevorzuge dabei Zutaten mit wenigen verbleibenden Tagen, damit möglichst wenig verschwendet wird. Rezepte dürfen zusätzlich ein paar wenige übliche Grundzutaten voraussetzen (Salz, Pfeffer, Öl, Gewürze, Wasser, Zucker), ohne diese als "fehlt noch" aufzuführen.
+
+Sehr wichtig zu Mengenangaben - jede Zutat (sowohl in "usedIngredients" als auch in "missingIngredients") bekommt eine eigene strukturierte Menge als "qty" (Zahl) und "unit" (einer von "g", "kg", "ml", "l", oder "" für stückweise gezählte Dinge wie Eier oder Zwiebeln - bei "" den Zähl-Begriff direkt ins "name"-Feld packen, z.B. "Eier", "Zwiebeln"):
+- Ist bei einer Zutat oben in der Speisekammer-Liste eine Menge angegeben (z.B. "Pilze 800g"), darf "qty" dieser Zutat in "usedIngredients" NIE größer sein als dieser vorhandene Bestand - wähle höchstens die vorhandene Menge, bei Bedarf auch weniger, wenn das für ein rundes Rezept sinnvoller ist.
+- Lege anhand dieser (durch den Bestand limitierten) Hauptzutat(en) eine passende Portionsanzahl fest ("servings", ganze Zahl) und leite davon die Mengen ALLER anderen Zutaten sinnvoll/proportional ab - auch für Zutaten ohne Bestandsmenge und für "missingIngredients". Am Ende müssen alle Mengen zur gewählten Portionsanzahl zusammenpassen.
+- Zutaten ohne Mengenangabe in der Speisekammer-Liste bekommen trotzdem eine passende "qty"/"unit" - frei sinnvoll gewählt, aber stimmig zu den anderen Mengen und der Portionsanzahl.
+- Soll von einer Zutat bewusst mehr verwendet werden als in der Speisekammer vorhanden ist, muss dafür extra eingekauft werden - führe sie dann NICHT unter "usedIngredients", sondern unter "missingIngredients" mit der vollen benötigten Menge.
 ${userWish ? `Zusätzlicher Wunsch: "${userWish}".` : ""}
 
 Antworte NUR mit einem JSON-Array, keine Erklärung, kein Markdown-Codeblock. Format:
-[{"title": "Kartoffel-Lauch-Suppe", "description": "Kurze, appetitliche 1-2 Satz Beschreibung.", "usedIngredients": ["Kartoffel", "Lauch"], "missingIngredients": ["Sahne"], "instructions": "Kurze Schritt-für-Schritt-Anleitung als Fließtext."}]
+[{"title": "Kartoffel-Lauch-Suppe", "description": "Kurze, appetitliche 1-2 Satz Beschreibung.", "servings": 4, "usedIngredients": [{"name": "Kartoffel", "qty": 600, "unit": "g"}, {"name": "Lauch", "qty": 1, "unit": ""}], "missingIngredients": [{"name": "Sahne", "qty": 200, "unit": "ml"}], "instructions": "Kurze Schritt-für-Schritt-Anleitung als Fließtext."}]
 usedIngredients: NUR Namen, die exakt (oder eindeutig erkennbar) in der obigen Speisekammer-Liste stehen. missingIngredients: zusätzlich benötigte Zutaten außer den genannten Grundzutaten. Nutze deutsche Namen.`;
     } else {
-        promptText = `Zusätzlicher Wunsch: "${userWish}". Passe die Rezeptvorschläge entsprechend an (weiterhin möglichst viele Speisekammer-Zutaten nutzen, bevorzugt bald ablaufende). Antworte wieder NUR mit einem JSON-Array im selben Format wie zuvor, wieder 4 Vorschläge.`;
+        promptText = `Zusätzlicher Wunsch: "${userWish}". Passe die Rezeptvorschläge entsprechend an (weiterhin möglichst viele Speisekammer-Zutaten nutzen, bevorzugt bald ablaufende). Halte dich weiterhin an die Mengen-Regeln von zuvor: jede Zutat mit eigenem "qty"/"unit", für "usedIngredients" begrenzt durch den jeweiligen Bestand, eine dazu passende Portionsanzahl ("servings") gewählt und alle übrigen Mengen darauf abgestimmt. Antworte wieder NUR mit einem JSON-Array im selben Format wie zuvor, wieder 4 Vorschläge.`;
     }
 
     aiRecipeLoading = true;
@@ -3062,7 +3138,7 @@ usedIngredients: NUR Namen, die exakt (oder eindeutig erkennbar) in der obigen S
     let requestContents = aiRecipeChatHistory.concat([{ role: "user", parts: [{ text: promptText }] }]);
     try {
         let res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/${getSelectedGeminiModel()}:generateContent?key=${apiKey}`,
             {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -3103,6 +3179,7 @@ usedIngredients: NUR Namen, die exakt (oder eindeutig erkennbar) in der obigen S
     }
     aiRecipeLoading = false;
     renderAiRecipeIdeasPage();
+    if (aiRecipeError) showModelSwitchPrompt(() => fetchAiRecipeIdeas(aiRecipeLastWish));
 }
 
 function sendAiRecipeWish() {
@@ -3118,11 +3195,43 @@ function sendAiRecipeWish() {
 // dabei gegen das Sortiment abgeglichen (wie bei der Bilderkennung) - nur echte
 // Nicht-Sortiments-Zutaten werden als "custom" markiert, keine pauschale
 // Markierung mehr, nur weil sie von der KI statt aus dem Picker kommt.
-function aiIngredientToRecipeEntry(name) {
+// Erlaubte Einheiten stimmen mit UNIT_SWIPER_OPTIONS überein (g, kg, ml, l, "").
+// Alles andere (z.B. "Stk", "Bund", von der KI trotz Anweisung mal geliefert)
+// wird als stückweise Menge ohne Einheit behandelt.
+const AI_ALLOWED_UNITS = ["g", "kg", "ml", "l", ""];
+function _normalizeAiUnit(unit) {
+    let u = (unit || "").toString().trim().toLowerCase();
+    return AI_ALLOWED_UNITS.includes(u) ? u : "";
+}
+
+// Baut aus einem KI-Zutat-Eintrag ({name, qty, unit} oder - falls die KI mal
+// nur einen String liefert - direkt der Name) das Anzeige-Label "Name Menge Einheit".
+function _aiIngredientLabel(ing) {
+    if (!ing || typeof ing === "string") return ing || "";
+    let name = ing.name || "";
+    if (ing.qty === undefined || ing.qty === null || ing.qty === "") return name;
+    let unit = _normalizeAiUnit(ing.unit);
+    let qty = _roundQty(parseFloat(ing.qty), unit);
+    if (!isFinite(qty)) return name;
+    return `${name} ${qty}${unit ? " " + unit : ""}`;
+}
+
+// Übernimmt einen einzelnen KI-Zutat-Eintrag in einen Rezept-Zutat-Eintrag mit
+// Mengenangabe (qty/unit), genau wie bei manuell angelegten Rezept-Zutaten.
+function aiIngredientToRecipeEntry(ing) {
+    let name = (typeof ing === "string") ? ing : (ing && ing.name) || "";
+    let qty = "", unit = "";
+    if (ing && typeof ing === "object" && ing.qty !== undefined && ing.qty !== null && ing.qty !== "") {
+        let n = parseFloat(ing.qty);
+        if (isFinite(n)) {
+            unit = _normalizeAiUnit(ing.unit);
+            qty = formatQty(_roundQty(n, unit));
+        }
+    }
     let match = findCatalogMatch(name);
     return match
-        ? { name: match.name, qty: "", unit: "", custom: false }
-        : { name: name, qty: "", unit: "", custom: true };
+        ? { name: match.name, qty, unit, custom: false }
+        : { name: name, qty, unit, custom: true };
 }
 
 function saveAiRecipeIdea(idx) {
@@ -3131,11 +3240,13 @@ function saveAiRecipeIdea(idx) {
     let ingredients = []
         .concat((r.usedIngredients || []).map(aiIngredientToRecipeEntry))
         .concat((r.missingIngredients || []).map(aiIngredientToRecipeEntry));
+    let servings = parseInt(r.servings) || 4;
     openCreateRecipe({
         index: null,
         name: r.title || "",
         ingredients: ingredients,
         instructions: r.instructions || "",
+        servings: servings,
         image: null
     });
     showToast("In den Editor übernommen - prüfen & speichern");
@@ -4077,16 +4188,25 @@ function openSortimentErweitern() {
 // responseSchema (erst "analysis" = Produkt klassifizieren, dann "storage" =
 // die Tageswerte - siehe Prompt unten).
 //
-// WICHTIG: selbst bei temperature 0 sind Antworten von Gemini nicht zu 100%
-// deterministisch (bei MoE-Modellen wie 2.5 Flash kann die interne
-// Experten-Auswahl serverseitig leicht variieren) - das lässt sich per Prompt
-// nicht wegbekommen. Deshalb wird hier ESTIMATE_RUNS-mal (parallel) abgefragt
-// und pro Lagerort der MEDIAN der Tageswerte übernommen. Die Streuung
-// zwischen den Läufen wird zur "confidence" - stimmen die Läufe stark überein
-// (z.B. 6d/7d/7d) gibt's "high", weichen sie stark ab (z.B. 1d/3d/4d wie bei
-// Paprika geöffnet) gibt's "low" - das ist ehrlicher als die reine
-// Selbsteinschätzung des Modells aus einem einzelnen Lauf.
+// Die Läufe laufen bewusst mit temperature 0.6 (statt 0): bei temperature 0
+// plus einer Prompt-Anweisung auf Konsistenz waren die Antworten praktisch
+// immer identisch, wodurch die Streuungs-Konfidenz fast immer "high" ergab,
+// unabhängig davon wie unsicher die Schätzung inhaltlich eigentlich war.
+// Mit echtem Spielraum in der Temperatur zeigt sich die tatsächliche
+// Unsicherheit des Modells in der Streuung der Läufe - stimmen sie stark
+// überein (z.B. 6d/7d/7d) gibt's "high", weichen sie stark ab (z.B. 1d/3d/4d
+// wie bei Paprika geöffnet) gibt's "low" - das ist ehrlicher als die reine
+// Selbsteinschätzung des Modells aus einem einzelnen Lauf. Pro Lagerort wird
+// der MEDIAN der Tageswerte übernommen.
+//
+// ESTIMATE_RUNS Läufe werden IMMER abgefragt (günstig, für eindeutige
+// Produkte völlig ausreichend). Sind sich diese Läufe für mind. einen
+// relevanten Lagerort noch uneinig (siehe needsTopUp weiter unten), werden
+// automatisch zusätzliche Läufe nachgeladen, bis insgesamt MAX_ESTIMATE_RUNS
+// erreicht sind - so zahlt man die höheren Kosten nur bei den Produkten, bei
+// denen es sich auch lohnt, statt sie pauschal auf jede Anfrage draufzuschlagen.
 const ESTIMATE_RUNS = 3;
+const MAX_ESTIMATE_RUNS = 10;
 
 async function estimateShelfLifeWithAI() {
     let name = document.getElementById("sname").value.trim();
@@ -4119,7 +4239,7 @@ Für jeden Lagerort:
 - "openedDays": Haltbarkeit NACH dem Öffnen in ganzen Tagen - NUR falls laut Analyse ein Öffnen überhaupt Sinn ergibt, sonst null.
 - "qualityWarning": true, falls dieser Lagerort zwar sinnvoll ist und die Lagerzeit spürbar verlängert, dabei aber typischerweise nur zu einem merklichen Qualitätsverlust (Geschmack/Konsistenz/Aroma/Textur/Aussehen, NICHT Lebensmittelsicherheit) statt echtem Verderb führt (Beispiele: Tomaten, Brot, Schokolade oder Kartoffeln im Kühlschrank) - sonst false.
 
-Stütze dich gedanklich auf allgemein anerkannte lebensmittelwissenschaftliche Erkenntnisse (z.B. USDA, FDA, EFSA, BfR, Lebensmitteltechnologie, übliche Herstellerempfehlungen) - keine kreative Einzelschätzung, keine zufälligen Schwankungen, für dasselbe Produkt bei wiederholter Anfrage immer (annähernd) dieselben Werte. Ziel ist NICHT das Mindesthaltbarkeitsdatum, sondern wie lange ein durchschnittliches Produkt bei korrekter Lagerung unter normalen Haushaltsbedingungen üblicherweise ohne Verderb bleibt - weder unnötig konservativ (das begünstigt Lebensmittelverschwendung) noch unrealistisch lang.`;
+Stütze dich gedanklich auf allgemein anerkannte lebensmittelwissenschaftliche Erkenntnisse (z.B. USDA, FDA, EFSA, BfR, Lebensmitteltechnologie, übliche Herstellerempfehlungen) - keine willkürliche Einzelschätzung. Gib deine ehrliche, fachlich fundierte Einschätzung ab; wenn die Datenlage für ein Produkt/einen Lagerort tatsächlich einen gewissen Spielraum zulässt (z.B. weil sich Quellen leicht unterscheiden oder das Produkt stark variieren kann), darf sich das in leicht unterschiedlichen, aber jeweils plausiblen Werten widerspiegeln - erzwinge keine künstliche Einigkeit. Ziel ist NICHT das Mindesthaltbarkeitsdatum, sondern wie lange ein durchschnittliches Produkt bei korrekter Lagerung unter normalen Haushaltsbedingungen üblicherweise ohne Verderb bleibt - weder unnötig konservativ (das begünstigt Lebensmittelverschwendung) noch unrealistisch lang.`;
 
     // Reines Typ-Schema, bewusst OHNE Beispiel-Zahlen im Prompt-Text (Anker-Effekt,
     // siehe frühere Version). "confidence" wird hier NICHT mehr vom Modell selbst
@@ -4182,13 +4302,93 @@ Stütze dich gedanklich auf allgemein anerkannte lebensmittelwissenschaftliche E
 
     async function callOnce() {
         let res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/${getSelectedGeminiModel()}:generateContent?key=${apiKey}`,
             {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     contents: [{ role: "user", parts: [{ text: prompt }] }],
-                    generationConfig: { responseMimeType: "application/json", responseSchema: responseSchema, temperature: 0 }
+                    generationConfig: { responseMimeType: "application/json", responseSchema: responseSchema, temperature: 0.6 }
+                })
+            }
+        );
+        if (!res.ok) {
+            let bodyText = await res.text().catch(() => "");
+            let reason = "HTTP " + res.status;
+            try {
+                let errJson = JSON.parse(bodyText);
+                if (errJson.error && errJson.error.message) reason = errJson.error.message;
+            } catch (e) {}
+            throw new Error(reason);
+        }
+        let data = await res.json();
+        let text = ((data.candidates && data.candidates[0] && data.candidates[0].content &&
+                    data.candidates[0].content.parts) || [])
+            .map(part => part.text || "").join("");
+        let parsed;
+        try {
+            parsed = JSON.parse(text);
+        } catch (e) {
+            let m = text.match(/\{[\s\S]*\}/);
+            parsed = m ? JSON.parse(m[0]) : null;
+        }
+        if (!parsed) throw new Error("Antwort konnte nicht gelesen werden");
+        return parsed;
+    }
+
+    // Zweiter, nachgelagerter KI-Aufruf (siehe unten im try-Block): prüft NICHT
+    // anhand einer starren Regel (z.B. "kälter muss immer mindestens genauso
+    // lange halten wie wärmer" - das ist produktabhängig und war der frühere,
+    // zu naive Ansatz), sondern lässt das Modell die bereits ermittelten Werte
+    // ALLER Lagerorte im Kontext des konkreten Produkts gegeneinander abwägen.
+    // Nur bei einem für die KI nicht erklärbaren Widerspruch wird geflaggt -
+    // der Wert selbst wird dabei nie automatisch verändert, nur markiert.
+    async function crossCheckPlausibility(name, finalValues, storageLabel) {
+        let lines = Object.keys(finalValues).map(storage => {
+            let v = finalValues[storage];
+            let openedPart = (typeof v.openedDays === "number")
+                ? `, nach dem Öffnen danach noch ca. ${v.openedDays} Tage haltbar`
+                : "";
+            return `- ${storageLabel[storage]}: ungeöffnet ca. ${v.closedDays} Tage haltbar${openedPart}`;
+        }).join("\n");
+
+        let reviewPrompt = `Du bist ein Lebensmittel-Experte und prüfst eine bereits fertige Haltbarkeits-Einschätzung für "${name}" auf Plausibilität IM VERGLEICH DER LAGERORTE ZUEINANDER.
+
+Bisher ermittelte Werte für "${name}":
+${lines}
+
+WICHTIG: Es gibt KEINE starre Regel wie "ein kälterer Lagerort muss immer mindestens genauso lange haltbar sein wie ein wärmerer". Ob so etwas zutrifft, hängt vom konkreten Produkt ab (übliche Verpackung/Handelsform, Verarbeitungsgrad, Säure-/Fett-/Feuchtigkeitsgehalt, Licht- oder Oxidationsempfindlichkeit, Textur-Veränderung durch Gefrieren, etc.). Beurteile stattdessen inhaltlich und produktspezifisch, ob die Werte für "${name}" im Vergleich zueinander Sinn ergeben.
+
+Setze "closedPlausible" bzw. "openedPlausible" für einen Lagerort NUR auf false, wenn du im Vergleich zu den ANDEREN Werten einen echten Widerspruch siehst, den du dir für "${name}" konkret nicht erklären kannst (z.B. ein Lagerort ist deutlich kürzer haltbar als ein eigentlich ungünstigerer Lagerort, ohne plausiblen produktspezifischen Grund). Bei jeder für dich nachvollziehbaren bzw. nur geringfügigen Abweichung bleibt es bei true - sei zurückhaltend mit "false". Gib bei "false" eine kurze, produktspezifische Begründung ("note", maximal 1 Satz, auf Deutsch).`;
+
+        let fieldReviewSchema = {
+            type: "object",
+            properties: {
+                closedPlausible: { type: "boolean" },
+                openedPlausible: { type: "boolean", nullable: true },
+                note: { type: "string" }
+            },
+            required: ["closedPlausible"]
+        };
+        let fieldsProps = {};
+        Object.keys(finalValues).forEach(storage => { fieldsProps[storage] = fieldReviewSchema; });
+        let reviewSchema = {
+            type: "object",
+            properties: {
+                overallPlausible: { type: "boolean" },
+                fields: { type: "object", properties: fieldsProps, required: Object.keys(finalValues) }
+            },
+            required: ["overallPlausible", "fields"]
+        };
+
+        let res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${getSelectedGeminiModel()}:generateContent?key=${apiKey}`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    contents: [{ role: "user", parts: [{ text: reviewPrompt }] }],
+                    generationConfig: { responseMimeType: "application/json", responseSchema: reviewSchema, temperature: 0 }
                 })
             }
         );
@@ -4235,9 +4435,37 @@ Stütze dich gedanklich auf allgemein anerkannte lebensmittelwissenschaftliche E
         return "low";
     }
 
+    let storages = ["kuehlschrank", "abgedunkelt", "ungedunkelt", "keller", "freezer"];
+    let storageLabel = {
+        kuehlschrank: "Kühlschrank (ca. 4°C)",
+        abgedunkelt: "Zimmertemperatur, dunkler Schrank/Speisekammer (kein Licht)",
+        ungedunkelt: "Zimmertemperatur, Tageslicht/nicht abgedunkelt",
+        keller: "kühler, dunkler, trockener Keller (ca. 10-15°C)",
+        freezer: "Gefrierfach/Gefriertruhe (ca. -18°C)"
+    };
+
+    // Prüft anhand eines bereits vorliegenden Laufsatzes, ob mindestens ein
+    // tatsächlich relevanter Lagerort (Mehrheit der Läufe hält ihn für
+    // anwendbar) noch KEINE "high"-Konfidenz hat. Nur dann lohnen sich
+    // zusätzliche, teurere Läufe - bei eindeutigen Produkten bleibt es bei
+    // den günstigen ESTIMATE_RUNS Läufen.
+    function needsTopUp(runs) {
+        return storages.some(storage => {
+            let entries = runs.map(p => (p.storage || {})[storage]).filter(Boolean);
+            let applicableVotes = entries.filter(e => e.applicable).length;
+            if (applicableVotes <= runs.length / 2) return false; // Lagerort insgesamt nicht relevant für dieses Produkt
+            let closedVals = entries.filter(e => e.applicable && typeof e.closedDays === "number" && e.closedDays > 0).map(e => e.closedDays);
+            let openedVals = entries.filter(e => e.applicable && typeof e.openedDays === "number" && e.openedDays > 0).map(e => e.openedDays);
+            let closedOk = !closedVals.length || confidenceFromSpread(closedVals, applicableVotes, runs.length) === "high";
+            let openedOk = !openedVals.length || confidenceFromSpread(openedVals, applicableVotes, runs.length) === "high";
+            return !closedOk || !openedOk;
+        });
+    }
+
     try {
         let results = await Promise.allSettled(Array.from({ length: ESTIMATE_RUNS }, () => callOnce()));
         let ok = results.filter(r => r.status === "fulfilled").map(r => r.value);
+        let attemptedTotal = ESTIMATE_RUNS;
         if (!ok.length) {
             let firstError = results.find(r => r.status === "rejected");
             throw (firstError && firstError.reason) || new Error("Keine Antwort erhalten");
@@ -4249,9 +4477,28 @@ Stütze dich gedanklich auf allgemein anerkannte lebensmittelwissenschaftliche E
         if (foodVotes < ok.length / 2) {
             showToast(`"${name}" wurde nicht als Lebensmittel erkannt - bitte Namen prüfen`);
         } else {
-            let storages = ["kuehlschrank", "abgedunkelt", "ungedunkelt", "keller", "freezer"];
+            // Adaptives Nachladen: die ersten ESTIMATE_RUNS Läufe reichen für
+            // die meisten (eindeutigen) Produkte völlig aus und bleiben
+            // günstig. Nur wenn sie für mind. einen relevanten Lagerort noch
+            // uneinig sind (siehe needsTopUp oben), werden automatisch
+            // weitere Läufe nachgeladen, bis MAX_ESTIMATE_RUNS erreicht sind.
+            if (ok.length < MAX_ESTIMATE_RUNS && needsTopUp(ok)) {
+                let extra = MAX_ESTIMATE_RUNS - ok.length;
+                attemptedTotal += extra;
+                if (btnLabel) btnLabel.textContent = `Streuung uneinheitlich, frage ${extra}x weiter nach...`;
+                let extraResults = await Promise.allSettled(Array.from({ length: extra }, () => callOnce()));
+                ok = ok.concat(extraResults.filter(r => r.status === "fulfilled").map(r => r.value));
+                if (btnLabel) btnLabel.textContent = "werte Läufe aus...";
+            }
+
             let filledAny = false;
             let confidenceColor = { high: "#5e9c6a", medium: "#c9a13b", low: "#b0846b" };
+            let flaggedColor = "#c0392b";
+            // Sammelt die tatsächlich eingetragenen Werte + die zugehörigen
+            // Eingabefelder, damit der Plausibilitäts-Check weiter unten darauf
+            // zugreifen und bei Bedarf gezielt markieren kann.
+            let finalValues = {};
+            let fieldRefs = {};
 
             storages.forEach(storage => {
                 let entries = ok.map(p => (p.storage || {})[storage]).filter(Boolean);
@@ -4275,6 +4522,9 @@ Stütze dich gedanklich auf allgemein anerkannte lebensmittelwissenschaftliche E
                 let openedVals = entries.filter(e => e.applicable && typeof e.openedDays === "number" && e.openedDays > 0).map(e => e.openedDays);
                 let qualityVotes = entries.filter(e => e.applicable && e.qualityWarning).length;
 
+                fieldRefs[storage] = { closedEl: null, openedEl: null };
+                finalValues[storage] = {};
+
                 if (closedEl && closedVals.length) {
                     let val = median(closedVals);
                     closedEl.value = val;
@@ -4282,55 +4532,66 @@ Stütze dich gedanklich auf allgemein anerkannte lebensmittelwissenschaftliche E
                     let conf = confidenceFromSpread(closedVals, applicableVotes, ok.length);
                     closedEl.style.borderLeft = "4px solid " + confidenceColor[conf];
                     closedEl.title = `KI-Konfidenz: ${conf} (Läufe: ${closedVals.join("d, ")}d)`;
+                    fieldRefs[storage].closedEl = closedEl;
+                    finalValues[storage].closedDays = val;
                 }
                 if (openedEl && openedVals.length) {
-                    openedEl.value = median(openedVals);
+                    let val = median(openedVals);
+                    openedEl.value = val;
                     let conf = confidenceFromSpread(openedVals, applicableVotes, ok.length);
                     openedEl.style.borderLeft = "4px solid " + confidenceColor[conf];
                     openedEl.title = `KI-Konfidenz: ${conf} (Läufe: ${openedVals.join("d, ")}d)`;
+                    fieldRefs[storage].openedEl = openedEl;
+                    finalValues[storage].openedDays = val;
                 }
                 if (closedQEl) closedQEl.checked = qualityVotes > applicableVotes / 2;
                 if (openedQEl) openedQEl.checked = qualityVotes > applicableVotes / 2;
             });
 
-            // Plausibilitäts-Cross-Check: kältere Lagerorte sollten (mindestens)
-            // genauso lange oder länger haltbar sein wie wärmere - alles andere
-            // (z.B. Kühlschrank kürzer haltbar als unabgedunkelt bei Zimmertemperatur)
-            // ist physikalisch/lebensmitteltechnisch unplausibel und deutet darauf hin,
-            // dass die KI die Lagerorte nicht wirklich gegeneinander abgewogen hat.
-            // Wird NICHT automatisch "korrigiert" (die KI könnte in Einzelfällen recht
-            // haben), sondern nur visuell markiert, damit man gezielt nachschaut.
-            let coldnessOrder = ["freezer", "kuehlschrank", "keller", "abgedunkelt", "ungedunkelt"];
-            function fieldEl(storage, opened) {
-                return document.getElementById("sstore_" + (opened ? "opened_" : "") + storage);
-            }
-            function fieldVal(storage, opened) {
-                let el = fieldEl(storage, opened);
-                let v = el && el.value !== "" ? parseInt(el.value) : NaN;
-                return isNaN(v) ? null : v;
-            }
-            function flagInconsistency(el, msg) {
-                if (!el) return;
-                el.style.borderLeft = "4px solid #c0392b";
-                el.title = (el.title ? el.title + "  ⚠ " : "⚠ ") + msg;
-            }
-            [false, true].forEach(opened => {
-                for (let i = 0; i < coldnessOrder.length - 1; i++) {
-                    let colder = coldnessOrder[i], warmer = coldnessOrder[i + 1];
-                    let vColder = fieldVal(colder, opened), vWarmer = fieldVal(warmer, opened);
-                    if (vColder !== null && vWarmer !== null && vColder < vWarmer) {
-                        flagInconsistency(fieldEl(colder, opened), `unplausibel: kürzer haltbar als "${warmer}" (${vWarmer}d)`);
-                        flagInconsistency(fieldEl(warmer, opened), `unplausibel: länger haltbar als kälterer Lagerort "${colder}" (${vColder}d)`);
-                    }
-                }
-            });
+            let note = ok.length < attemptedTotal ? ` (nur ${ok.length}/${attemptedTotal} Läufe erfolgreich)` : "";
 
-            let note = ok.length < ESTIMATE_RUNS ? ` (nur ${ok.length}/${ESTIMATE_RUNS} Läufe erfolgreich)` : "";
+            // Plausibilitäts-Check: erst NACHDEM alle Lagerorte feststehen, wird
+            // in einem zweiten KI-Aufruf geprüft, ob die Werte im Vergleich
+            // zueinander für dieses konkrete Produkt Sinn ergeben (siehe
+            // crossCheckPlausibility oben). Erst wenn dieser Check nichts
+            // beanstandet, gilt die reine Streuungs-Konfidenz ("high") auch
+            // wirklich als bestätigt - bei einem Widerspruch wird das betroffene
+            // Feld unabhängig von der Streuung zusätzlich rot markiert.
+            if (filledAny && Object.keys(finalValues).length > 1) {
+                if (btnLabel) btnLabel.textContent = "prüfe Plausibilität...";
+                try {
+                    let review = await crossCheckPlausibility(name, finalValues, storageLabel);
+                    let anyFlag = false;
+                    Object.keys(fieldRefs).forEach(storage => {
+                        let fieldReview = (review.fields || {})[storage];
+                        if (!fieldReview) return;
+                        let { closedEl, openedEl } = fieldRefs[storage];
+                        if (closedEl && fieldReview.closedPlausible === false) {
+                            anyFlag = true;
+                            closedEl.style.borderLeft = "4px solid " + flaggedColor;
+                            closedEl.title += `  ⚠ Plausibilitäts-Check: ${fieldReview.note || "wirkt im Vergleich zu anderen Lagerorten unplausibel"}`;
+                        }
+                        if (openedEl && fieldReview.openedPlausible === false) {
+                            anyFlag = true;
+                            openedEl.style.borderLeft = "4px solid " + flaggedColor;
+                            openedEl.title += `  ⚠ Plausibilitäts-Check: ${fieldReview.note || "wirkt im Vergleich zu anderen Lagerorten unplausibel"}`;
+                        }
+                    });
+                    if (anyFlag) note += " - Plausibilitäts-Check hat Auffälligkeiten markiert, bitte prüfen";
+                } catch (e) {
+                    // Der Cross-Check ist eine Zusatzabsicherung, kein Kernbestandteil -
+                    // schlägt er fehl, bleiben die regulär geschätzten Werte trotzdem
+                    // stehen, nur eben ohne die zusätzliche Plausibilitätsmarkierung.
+                    console.warn("Plausibilitäts-Check fehlgeschlagen:", e);
+                }
+            }
+
             showToast(filledAny ? "Haltbarkeiten von der KI geschätzt - bitte prüfen" + note : "KI konnte keinen passenden Lagerort einschätzen");
         }
     } catch (e) {
         console.error("KI-Haltbarkeitsschätzung fehlgeschlagen:", e);
         showToast("Schätzung fehlgeschlagen: " + ((e && e.message) || "unbekannter Fehler"));
+        showModelSwitchPrompt(() => estimateShelfLifeWithAI());
     }
 
     if (btn) btn.disabled = false;
@@ -5041,6 +5302,25 @@ function _consolidateStock(totalByUnit, hasUnsizedTile) {
     return parts.length > 0 ? parts.join(", ") + plus : (hasUnsizedTile ? "" : "");
 }
 
+// ── Robuster Speisekammer-Abgleich für Rezept-Zutaten ──
+// Sucht zuerst exakt (case-/whitespace-insensitiv), fällt sonst - genau wie
+// findCatalogMatch() beim Sortiments-Abgleich - auf einen "enthält"-Vergleich
+// zurück. Verhindert, dass eine Zutat fälschlich als "gar nicht vorhanden" (rot)
+// gilt, nur weil der (z.B. von der KI vorgeschlagene) Zutatenname minimal vom
+// tatsächlichen Speisekammer-Namen abweicht (Singular/Plural, Zusatzwort o.ä.),
+// obwohl ein passendes Produkt im Bestand liegt. Ist ein Produkt so gefunden,
+// übernimmt _recipeStockStatus() ganz normal den Mengenvergleich (grün/gelb).
+function getPantryStockForIngredient(ingName) {
+    let key = (ingName || "").trim().toLowerCase();
+    if (!key) return [];
+    let exact = pantry.filter(p => p.name.trim().toLowerCase() === key);
+    if (exact.length) return exact;
+    return pantry.filter(p => {
+        let n = p.name.trim().toLowerCase();
+        return n && (n.includes(key) || key.includes(n));
+    });
+}
+
 // ── Globale Hilfsfunktion für Rezept-Mengenvergleich ──
 // Gibt "green" | "yellow" | "red" zurück
 function _recipeStockStatus(ing, stock) {
@@ -5089,7 +5369,7 @@ function isRecipeFullyStocked(r, factor) {
     return r.ingredients.every(ing => {
         if (ing.optional) return true;
         let scaled = factor === 1 ? ing : scaleIngredient(ing, factor);
-        let stock = pantry.filter(p => p.name.trim().toLowerCase() === scaled.name.trim().toLowerCase());
+        let stock = getPantryStockForIngredient(scaled.name);
         return _recipeStockStatus(scaled, stock) === "green";
     });
 }
@@ -5102,7 +5382,7 @@ function isRecipePartiallyStocked(r, factor) {
     return r.ingredients.every(ing => {
         if (ing.optional) return true;
         let scaled = factor === 1 ? ing : scaleIngredient(ing, factor);
-        let stock = pantry.filter(p => p.name.trim().toLowerCase() === scaled.name.trim().toLowerCase());
+        let stock = getPantryStockForIngredient(scaled.name);
         return _recipeStockStatus(scaled, stock) !== "red";
     });
 }
@@ -5567,8 +5847,7 @@ function openRecipeDetail(index) {
 
     // ── Check pantry stock per ingredient ──
     function getPantryStock(ingName) {
-        let key = ingName.trim().toLowerCase();
-        return pantry.filter(p => p.name.toLowerCase() === key);
+        return getPantryStockForIngredient(ingName);
     }
 
     let ingredientRows = r.ingredients.length === 0
@@ -5702,7 +5981,7 @@ function addAllMissingToShoppingList(recipeIndex) {
     let scaledIngredients = r.ingredients.map(ing => scaleIngredient(ing, factor));
     let notGreen = scaledIngredients.filter(ing => {
         if (ing.optional) return false;
-        let stock = pantry.filter(p => p.name.trim().toLowerCase() === ing.name.trim().toLowerCase());
+        let stock = getPantryStockForIngredient(ing.name);
         return _recipeStockStatus(ing, stock) !== "green";
     });
     if (notGreen.length === 0) return;
