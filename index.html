@@ -2194,7 +2194,7 @@ function buildPantryListText() {
 }
 
 function copyPantryListForAI() {
-    if (!pantry.length) { showToast("Speisekammer ist leer"); return; }
+    if (!pantry.length) { showToast("Speisekammer empty"); return; }
     let text = buildPantryListText();
     navigator.clipboard?.writeText(text).then(() => showToast("Liste kopiert! (" + pantry.length + " Produkte)"))
         .catch(() => showToast("Kopieren nicht möglich"));
