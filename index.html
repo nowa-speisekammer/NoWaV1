@@ -1024,6 +1024,14 @@ let sortimentSearchTerm = "";
 let currentPage = "home";
 // "both" = qty for pantry + shopping list, "shopping" = shopping list only, "none" = disabled
 let qtyMode = "both";
+// Optionale, standardmäßig AUS geschaltete Zusatzfunktion: Notizen/Labels an
+// Einkaufslisten-Einträgen (z.B. "Lidl", "DM", "heute noch einkaufen").
+let shoppingLabelsEnabled = false;
+// Vom Nutzer selbst gepflegte, dauerhaft gespeicherte Label-Vorschläge (z.B.
+// die eigenen Stammläden), die dann beim Notiz-Setzen direkt antippbar sind,
+// statt jedes Mal neu getippt werden zu müssen. Begrenzt auf MAX_SAVED_LABELS.
+let savedShoppingLabels = [];
+const MAX_SAVED_LABELS = 15;
 // recipes: [{name, ingredients:[{name, qty, unit}]}]
 let recipes = [];
 // Optionale Portionsangabe in der Rezeptübersicht (String, damit ein leeres Feld möglich ist).
@@ -1716,7 +1724,7 @@ function saveCustomData() {
             // sich das (begrenzte, gerade auf dem Handy oft knappe) localStorage-Kontingent
             // mit denselben Bildern doppelt und führt zu "storage full".
             pantry: pantry.map(stripCatalogImageForSync),
-            hiddenProducts, shoppingList, shoppingListChecked, qtyMode, recipes,
+            hiddenProducts, shoppingList, shoppingListChecked, qtyMode, shoppingLabelsEnabled, savedShoppingLabels, recipes,
             lastLocalUpdate
         }));
     } catch (e) {
@@ -1762,6 +1770,8 @@ function loadCustomData() {
         if (data.shoppingListChecked) shoppingListChecked = data.shoppingListChecked;
         while (shoppingListChecked.length < shoppingList.length) shoppingListChecked.push(false);
         if (data.qtyMode) qtyMode = data.qtyMode;
+        if (typeof data.shoppingLabelsEnabled === "boolean") shoppingLabelsEnabled = data.shoppingLabelsEnabled;
+        if (Array.isArray(data.savedShoppingLabels)) savedShoppingLabels = data.savedShoppingLabels;
         if (data.recipes) recipes = data.recipes;
         // Zeitstempel der letzten lokalen Änderung wiederherstellen (überlebt Neuladen/Schließen),
         // damit ein veralteter Cloud-Snapshot beim Start diese Änderung nicht überschreiben kann.
@@ -1803,7 +1813,7 @@ function buildBackupPayload() {
         customQualityWarnStorage, customQualityWarnStorageOpened,
         customOpenable, customOpenedDaysOverride, customOpenedShelfLifeDays,
         customSpoilageInfo, pantry, hiddenProducts, shoppingList,
-        shoppingListChecked, qtyMode, recipes, photoCache
+        shoppingListChecked, qtyMode, shoppingLabelsEnabled, savedShoppingLabels, recipes, photoCache
     };
 }
 
@@ -1906,6 +1916,8 @@ function applyBackupPayload(data) {
     if (data.shoppingListChecked) shoppingListChecked = data.shoppingListChecked;
     while (shoppingListChecked.length < shoppingList.length) shoppingListChecked.push(false);
     if (data.qtyMode) qtyMode = data.qtyMode;
+    if (typeof data.shoppingLabelsEnabled === "boolean") shoppingLabelsEnabled = data.shoppingLabelsEnabled;
+    if (Array.isArray(data.savedShoppingLabels)) savedShoppingLabels = data.savedShoppingLabels;
     if (data.recipes) recipes = data.recipes;
     if (data.photoCache) {
         photoCache = Object.assign({}, photoCache, data.photoCache);
@@ -2514,6 +2526,17 @@ function openSettingsMenu() {
 
             <div id="qtyModeRow">${renderQtyRow()}</div>
 
+            <div style="margin-top:14px; display:flex; align-items:center; gap:7px; text-align:left;">
+                <input type="checkbox" id="shoppingLabelsToggle" ${shoppingLabelsEnabled ? "checked" : ""} onchange="toggleShoppingLabelsSetting(this.checked); document.getElementById('manageLabelsRowWrap').style.display = this.checked ? 'block' : 'none';" style="flex-shrink:0; width:15px; height:15px; margin:0; cursor:pointer;">
+                <label for="shoppingLabelsToggle" style="font-size:11.5px; opacity:0.75; line-height:1.35; cursor:pointer;">Notizen/Labels für Einkaufsliste (z.B. „Lidl", „heute noch einkaufen")</label>
+            </div>
+            <div id="manageLabelsRowWrap" style="display:${shoppingLabelsEnabled ? "block" : "none"};">
+                <button class="settings-row-btn" onclick="document.getElementById('settingsMenuOverlay').remove(); manageShoppingLabels();" style="margin-top:8px; padding:6px 10px;">
+                    <span style="flex:1; font-size:12px; opacity:0.85;">📌 Labels verwalten (${savedShoppingLabels.length}/${MAX_SAVED_LABELS})</span>
+                    <span style="opacity:0.3; font-size:14px;">&rsaquo;</span>
+                </button>
+            </div>
+
             <div style="margin-top:20px;">
                 <button onclick="document.getElementById('settingsMenuOverlay').remove()" style="background:#999; color:white; border:none; border-radius:12px; padding:9px 22px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace; font-weight:bold; font-size:13px;">close</button>
             </div>
@@ -2533,6 +2556,94 @@ function setQtyMode(mode) {
     if (activeBtn) activeBtn.classList.add("active");
     let explainEl = document.getElementById("qtyModeExplain");
     if (explainEl) explainEl.textContent = QTY_MODE_EXPLAIN[mode];
+}
+
+// Schaltet das optionale Notizen/Label-Feature der Einkaufsliste an/aus
+// (siehe Checkbox im Settings-Menü). Standardmäßig aus, damit die Einkaufsliste
+// für alle, die es nicht brauchen, unverändert schlicht bleibt.
+function toggleShoppingLabelsSetting(checked) {
+    shoppingLabelsEnabled = checked;
+    saveCustomData();
+}
+
+// Fügt ein Label dauerhaft zu den gespeicherten Vorschlägen hinzu (bis zu
+// MAX_SAVED_LABELS Stück). Gibt true zurück, wenn es gespeichert wurde.
+function addSavedShoppingLabel(label) {
+    label = (label || "").trim();
+    if (!label) return false;
+    if (savedShoppingLabels.includes(label)) return true; // schon gespeichert
+    if (savedShoppingLabels.length >= MAX_SAVED_LABELS) {
+        showToast(`maximal ${MAX_SAVED_LABELS} Label gespeichert – erst eins entfernen`);
+        return false;
+    }
+    savedShoppingLabels.push(label);
+    saveCustomData();
+    return true;
+}
+
+function removeSavedShoppingLabel(label) {
+    savedShoppingLabels = savedShoppingLabels.filter(l => l !== label);
+    saveCustomData();
+}
+
+// Verwaltungs-Popup für die gespeicherten Label-Vorschläge: hinzufügen (bis
+// MAX_SAVED_LABELS), bestehende per X entfernen. Erreichbar über den Settings-
+// Menü-Eintrag "Labels verwalten" (nur sichtbar, wenn das Feature aktiv ist).
+function manageShoppingLabels() {
+    let color = getActionBarColor();
+
+    function renderChips() {
+        if (savedShoppingLabels.length === 0) {
+            return `<div style="font-size:11.5px; opacity:0.55; margin:10px 0;">noch keine Label gespeichert</div>`;
+        }
+        return `<div style="margin:10px 0; display:flex; flex-wrap:wrap; justify-content:center; gap:6px; max-width:280px;">${
+            savedShoppingLabels.map(l => `
+                <span style="display:inline-flex; align-items:center; gap:5px; background:rgba(0,0,0,0.06); border-radius:10px; padding:4px 6px 4px 10px; font-size:12px;">
+                    ${escapeHtml(l)}
+                    <button type="button" class="manage-label-remove" data-label="${escapeHtml(l)}" style="background:none; border:none; padding:2px; cursor:pointer; opacity:0.5; font-size:12px; line-height:1;">✕</button>
+                </span>`
+            ).join("")
+        }</div>`;
+    }
+
+    let overlay = createModal(`
+        <div class="custom-modal-box" style="--modal-accent:${color}; max-width:320px;">
+            <div class="custom-modal-message">Gespeicherte Label <span style="font-size:11px; opacity:0.55; font-weight:normal;">(${savedShoppingLabels.length}/${MAX_SAVED_LABELS})</span></div>
+            <div id="manageLabelChips">${renderChips()}</div>
+            <div style="display:flex; gap:6px; margin-top:8px;">
+                <input id="manageLabelInput" type="text" placeholder="neues Label, z.B. Rewe" onkeydown="if(event.key==='Enter') addManagedLabelFromInput();" style="flex:1; box-sizing:border-box; border-radius:8px; border:1px solid #ccc; padding:7px 9px; font-size:13px; font-family:'Lucida Console','Courier New',monospace; text-align:center;">
+                <button onclick="addManagedLabelFromInput()" style="background:${color}; border:none; border-radius:8px; width:36px; padding:0; cursor:pointer; color:white; font-size:18px; line-height:1;">+</button>
+            </div>
+            <div style="margin-top:16px;">
+                <button onclick="this.closest('.custom-modal-overlay').remove()" style="background:#999; color:white; border:none; border-radius:12px; padding:9px 22px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace; font-weight:bold; font-size:13px;">fertig</button>
+            </div>
+        </div>
+    `, {id: "manageLabelsOverlay", closeOnBackdrop: true});
+
+    function bindRemoveButtons() {
+        overlay.querySelectorAll(".manage-label-remove").forEach(btn => {
+            btn.onclick = function() {
+                removeSavedShoppingLabel(btn.dataset.label);
+                document.getElementById("manageLabelChips").innerHTML = renderChips();
+                bindRemoveButtons();
+                let msgEl = overlay.querySelector(".custom-modal-message span");
+                if (msgEl) msgEl.textContent = `(${savedShoppingLabels.length}/${MAX_SAVED_LABELS})`;
+            };
+        });
+    }
+    bindRemoveButtons();
+
+    window.addManagedLabelFromInput = function() {
+        let input = document.getElementById("manageLabelInput");
+        if (!input) return;
+        if (addSavedShoppingLabel(input.value)) {
+            input.value = "";
+            document.getElementById("manageLabelChips").innerHTML = renderChips();
+            bindRemoveButtons();
+            let msgEl = overlay.querySelector(".custom-modal-message span");
+            if (msgEl) msgEl.textContent = `(${savedShoppingLabels.length}/${MAX_SAVED_LABELS})`;
+        }
+    };
 }
 
 // Prüft, ob für dieses Produkt irgendwo eine "geöffnet"-Haltbarkeit hinterlegt ist
@@ -5655,9 +5766,21 @@ function editPantryQty(index) {
     document.getElementById("editPantryQtyCancel").onclick = function() { overlay.remove(); };
 }
 
+// 4. Feld (per "||" angehängt) ist optional: Notiz/Label wie "Lidl" oder
+// "heute noch einkaufen" - nur befüllt, wenn die Einkaufslisten-Notizen in
+// den Einstellungen aktiviert sind UND der Nutzer eine Notiz gesetzt hat.
 function parseShoppingEntry(entry) {
     let parts = entry.split("||");
-    return { name: parts[0], qty: parts[1] || "", unit: parts[2] || "" };
+    return { name: parts[0], qty: parts[1] || "", unit: parts[2] || "", label: parts[3] || "" };
+}
+
+// Baut einen Einkaufslisten-Eintrag aus seinen Einzelteilen. Ist nichts weiter
+// als der Name gesetzt, bleibt der Eintrag ein simpler String (kompatibel zu
+// älteren, vor diesem Feature gespeicherten Listen).
+function buildShoppingEntry(name, qty, unit, label) {
+    qty = qty || ""; unit = unit || ""; label = label || "";
+    if (!qty && !unit && !label) return name;
+    return `${name}||${qty}||${unit}||${label}`;
 }
 
 function askToAddToShoppingList(name, prefillQty, prefillUnit, onDone) {
@@ -5721,7 +5844,9 @@ function askToAddToShoppingList(name, prefillQty, prefillUnit, onDone) {
         let unitEl = document.getElementById("shoppingUnitSelect");
         let qty = qtyEl ? qtyEl.value.trim() : "";
         let unit = unitEl ? unitEl.value : "";
-        let entry = qty ? `${name}||${qty}||${unit}` : name;
+        // Eine evtl. bereits gesetzte Notiz/Label bleibt beim Zusammenführen erhalten,
+        // statt beim Mengen-Update stillschweigend verloren zu gehen.
+        let entry = buildShoppingEntry(name, qty, unit, existing ? existing.label : "");
         if (existingIndex >= 0) {
             shoppingList[existingIndex] = entry;
         } else {
@@ -5767,20 +5892,26 @@ function openShoppingList() {
         listHtml = '<div class="shopping-list-container">';
         shoppingList.forEach((item, index) => {
             let checked = !!shoppingListChecked[index];
-            let { name, qty, unit } = parseShoppingEntry(item);
+            let { name, qty, unit, label } = parseShoppingEntry(item);
             let qtyLabel = qty ? `<span style="font-weight:300; font-size:0.78em; opacity:0.75; letter-spacing:0.02em;"> ·&thinsp;${qty}${unit ? "&thinsp;" + unit : ""}</span>` : "";
+            // Notiz/Label-Pill: sehr dezent (klein, halbtransparent), nur sichtbar wenn
+            // das Feature in den Einstellungen aktiviert UND ein Label gesetzt ist.
+            let notePill = (shoppingLabelsEnabled && label)
+                ? `<span style="font-size:0.68em; opacity:0.8; background:rgba(255,255,255,0.22); padding:1px 7px; border-radius:8px; margin-left:5px; white-space:nowrap;">${escapeHtml(label)}</span>`
+                : "";
             let imgRef = getShoppingItemImageRef(name);
             let imgHtml = imgRef
                 ? `<div style="width:36px; height:36px; border-radius:50%; overflow:hidden; flex-shrink:0; border:2px solid rgba(255,255,255,0.35); box-shadow:0 1px 4px rgba(0,0,0,0.2); background:rgba(255,255,255,0.15);"><img src="${imgSrcFor(imgRef)}" data-photo-id="${photoRefId(imgRef)}" style="width:100%; height:100%; object-fit:cover;"></div>`
                 : `<div style="width:36px; height:36px; border-radius:50%; flex-shrink:0; background:transparent; box-shadow: inset 3px 3px 6px rgba(0,0,0,0.16), inset -2px -2px 5px rgba(255,255,255,0.22);"></div>`;
             listHtml += `
                 <div class="shopping-item" style="background:${getActionBarColor()}; color:white; border-radius:14px; padding:10px 12px; margin-bottom:8px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
-                    <span style="display:flex; align-items:center; gap:10px;">
+                    <span style="display:flex; align-items:center; gap:10px; min-width:0;">
                         <input type="checkbox" class="shop-checkbox" onclick="toggleShoppingChecked(${index})" ${checked ? "checked" : ""} />
                         ${imgHtml}
-                        <span class="shopping-item-label" style="${checked ? "text-decoration: line-through; color:rgba(255,255,255,0.6);" : "color:white;"}"><b>${name}</b>${qtyLabel}</span>
+                        <span class="shopping-item-label" style="min-width:0; overflow:hidden; text-overflow:ellipsis; ${checked ? "text-decoration: line-through; color:rgba(255,255,255,0.6);" : "color:white;"}"><b>${name}</b>${qtyLabel}${notePill}</span>
                     </span>
-                    <span style="display:flex; gap:4px;">
+                    <span style="display:flex; gap:4px; flex-shrink:0;">
+                        ${shoppingLabelsEnabled ? `<button onclick="editShoppingItemLabel(${index})" title="Notiz/Label" style="background:none; border:none; border-radius:8px; width:30px; height:30px; padding:0; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px; opacity:${label ? "1" : "0.55"};">🏷️</button>` : ""}
                         ${qtyMode !== "none" ? `<button onclick="editShoppingItemQty(${index})" title="edit" style="background:none; border:none; border-radius:8px; width:30px; height:30px; padding:0; cursor:pointer; display:flex; align-items:center; justify-content:center;"><img src="data:image/png;base64,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" style="width:16px; height:16px;"></button>` : ""}
                         <button onclick="removeShoppingItem(${index})" title="eliminate" style="background:none; border:none; border-radius:8px; width:30px; height:30px; padding:0; cursor:pointer; display:flex; align-items:center; justify-content:center;"><img src="data:image/png;base64,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" style="width:16px; height:16px;"></button>
                     </span>
@@ -5834,7 +5965,7 @@ function removeShoppingItem(index) {
 }
 
 function editShoppingItemQty(index) {
-    let { name, qty, unit } = parseShoppingEntry(shoppingList[index]);
+    let { name, qty, unit, label } = parseShoppingEntry(shoppingList[index]);
     let color = getActionBarColor();
     let overlay = createModal(`
         <div class="custom-modal-box" style="--modal-accent:${color};">
@@ -5853,12 +5984,69 @@ function editShoppingItemQty(index) {
     document.getElementById("editQtyOk").onclick = function() {
         let newQty = document.getElementById("editQtyInput").value.trim();
         let newUnit = document.getElementById("editUnitSelect").value;
-        shoppingList[index] = newQty ? `${name}||${newQty}||${newUnit}` : name;
+        shoppingList[index] = buildShoppingEntry(name, newQty, newUnit, label);
         saveCustomData();
         overlay.remove();
         openShoppingList();
     };
     document.getElementById("editQtyCancel").onclick = function() { overlay.remove(); };
+}
+
+// Öffnet ein kompaktes Popup zum Setzen/Ändern einer optionalen Notiz/eines
+// Labels an einem Einkaufslisten-Eintrag (z.B. Laden wie "Lidl", "DM", oder
+// freier Text wie "heute noch einkaufen"). Nur erreichbar, wenn die Funktion
+// im Settings-Menü aktiviert wurde (shoppingLabelsEnabled).
+function editShoppingItemLabel(index) {
+    let { name, qty, unit, label } = parseShoppingEntry(shoppingList[index]);
+    let color = getActionBarColor();
+
+    // Chips zeigen die vom Nutzer dauerhaft gespeicherten Label (siehe
+    // "Labels verwalten" im Settings-Menü) - antippen füllt nur das Textfeld,
+    // erst "OK" übernimmt es tatsächlich am Artikel.
+    let presets = savedShoppingLabels.filter(l => l !== label);
+    let chipsHtml = presets.map(l =>
+        `<button type="button" class="shopping-label-chip" data-label="${escapeHtml(l)}" style="background:rgba(0,0,0,0.06); border:none; border-radius:10px; padding:5px 10px; margin:3px; font-size:11px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace;">${escapeHtml(l)}</button>`
+    ).join("");
+
+    let overlay = createModal(`
+        <div class="custom-modal-box" style="--modal-accent:${color};">
+            <div class="custom-modal-message">${escapeHtml(name)}<br><span style="font-size:11px; opacity:0.6; font-weight:normal;">Notiz / Label</span></div>
+            <div style="display:flex; gap:6px; align-items:center; margin-top:6px;">
+                <input id="shopLabelInput" type="text" placeholder="z.B. Lidl, heute noch einkaufen..." value="${escapeHtml(label)}" style="flex:1; box-sizing:border-box; border-radius:8px; border:1px solid #ccc; padding:7px 9px; font-size:13px; font-family:'Lucida Console','Courier New',monospace; text-align:center;">
+                <button id="shopLabelSave" type="button" title="dauerhaft als Vorschlag merken" style="background:none; border:1px solid #ccc; border-radius:8px; width:34px; height:32px; padding:0; cursor:pointer; font-size:15px; flex-shrink:0;">📌</button>
+            </div>
+            ${presets.length ? `<div style="margin-top:8px; display:flex; flex-wrap:wrap; justify-content:center; max-width:260px;">${chipsHtml}</div>` : `<div style="font-size:10.5px; opacity:0.5; margin-top:8px;">📌 tippen, um eine Notiz dauerhaft als Vorschlag zu merken</div>`}
+            <div class="custom-modal-buttons" style="margin-top:14px;">
+                <button id="shopLabelOk" style="background:${color};">OK</button>
+                ${label ? `<button id="shopLabelClear" style="background:#c0392b;">entfernen</button>` : ""}
+                <button id="shopLabelCancel" style="background:#999;">Cancel</button>
+            </div>
+        </div>
+    `);
+    overlay.querySelectorAll(".shopping-label-chip").forEach(chip => {
+        chip.onclick = function() { document.getElementById("shopLabelInput").value = chip.dataset.label; };
+    });
+    document.getElementById("shopLabelSave").onclick = function() {
+        let val = document.getElementById("shopLabelInput").value.trim();
+        if (!val) { showToast("erst Text eingeben"); return; }
+        if (addSavedShoppingLabel(val)) showToast(`„${val}" gemerkt`);
+    };
+    document.getElementById("shopLabelOk").onclick = function() {
+        let newLabel = document.getElementById("shopLabelInput").value.trim();
+        shoppingList[index] = buildShoppingEntry(name, qty, unit, newLabel);
+        saveCustomData();
+        overlay.remove();
+        openShoppingList();
+    };
+    if (label) {
+        document.getElementById("shopLabelClear").onclick = function() {
+            shoppingList[index] = buildShoppingEntry(name, qty, unit, "");
+            saveCustomData();
+            overlay.remove();
+            openShoppingList();
+        };
+    }
+    document.getElementById("shopLabelCancel").onclick = function() { overlay.remove(); };
 }
 
 function clearShoppingList() {
@@ -6857,7 +7045,7 @@ function collectSyncPayload() {
         customOpenable, customOpenedDaysOverride, customOpenedShelfLifeDays, customSpoilageInfo,
         pantry: pantry.map(stripCatalogImageForSync),
         hiddenProducts, shoppingList, shoppingListChecked,
-        qtyMode, recipes,
+        qtyMode, shoppingLabelsEnabled, savedShoppingLabels, recipes,
         groupName: syncGroupName || "",
         updatedAt: Date.now()
     };
@@ -6899,6 +7087,8 @@ function applyRemotePayload(data) {
         if (data.shoppingListChecked) shoppingListChecked = data.shoppingListChecked;
         while (shoppingListChecked.length < shoppingList.length) shoppingListChecked.push(false);
         if (data.qtyMode) qtyMode = data.qtyMode;
+        if (typeof data.shoppingLabelsEnabled === "boolean") shoppingLabelsEnabled = data.shoppingLabelsEnabled;
+        if (Array.isArray(data.savedShoppingLabels)) savedShoppingLabels = data.savedShoppingLabels;
         if (data.recipes) recipes = data.recipes;
         // Gruppennamen übernehmen (auch leeren String, falls er auf einem anderen
         // Gerät gelöscht wurde) und lokal merken, damit er beim nächsten App-Start
