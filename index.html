@@ -1277,6 +1277,33 @@ function photoRefId(v) {
     return isPhotoRef(v) ? v.slice(PHOTO_REF_PREFIX.length) : "";
 }
 
+// Gemeinsame Basis für "Bild oder schattierter Platzhalter-Kreis": bei echtem
+// Bild ein <img> (inkl. Lade-Klasse und data-photo-id fürs spätere Nachladen
+// via patchPhotoImages), sonst ein <div class="no-image-placeholder">.
+// extraImgAttrs/extraPlaceholderAttrs sind zusätzliche rohe HTML-Attribute
+// (z.B. id, style), damit Aufrufer wie aiThumbHtml() eigene Größen/IDs setzen
+// können, während Speisekammer/Sortiment einfach die .circle-container-CSS
+// nutzen und keine zusätzlichen Attribute brauchen.
+function imageOrPlaceholderHtml(rawImg, extraImgAttrs, extraPlaceholderAttrs) {
+    if (hasRealImage(rawImg)) {
+        let loadingClass = isPhotoLoading(rawImg) ? "photo-loading" : "";
+        return `<img class="${loadingClass}" src="${imgSrcFor(rawImg)}" data-photo-id="${photoRefId(rawImg)}" ${extraImgAttrs || ""}>`;
+    }
+    return `<div class="no-image-placeholder" ${extraPlaceholderAttrs || ""}></div>`;
+}
+
+// Baut die kleine Kreis-Miniatur der KI-Erkennungs-Review: bei echtem Bild ein
+// <img>, sonst (z.B. Produkt nicht im Sortiment / kein Foto) der schattierte
+// "kein Bild"-Kreis, wie er auch in Speisekammer und Sortiment verwendet wird -
+// statt wie bisher immer ein generisches Platzhalterbild zu zeigen.
+function aiThumbHtml(id, rawImg) {
+    return imageOrPlaceholderHtml(
+        rawImg,
+        `id="aiImg${id}" style="width:46px; height:46px; object-fit:cover; border-radius:50%; background:rgba(255,255,255,0.3); border:2px solid rgba(255,255,255,0.5);"`,
+        `id="aiImg${id}" style="width:46px; height:46px; border-radius:50%; background:rgba(255,255,255,0.28); border:2px solid rgba(255,255,255,0.5); box-shadow: inset 3px 3px 6px rgba(0,0,0,0.16), inset -2px -2px 5px rgba(255,255,255,0.22);"`
+    );
+}
+
 function generatePhotoId() {
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, "");
     return "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
@@ -1808,7 +1835,7 @@ function exportBackupData() {
         showToast("Backup wird heruntergeladen...");
     } catch (e) {
         console.error("Backup-Export fehlgeschlagen:", e);
-        showToast("⚠️ Backup konnte nicht erstellt werden");
+        showToast("Backup konnte nicht erstellt werden");
     }
 }
 
@@ -1847,10 +1874,10 @@ function handleImportBackupFile(input) {
                     showToast("Backup erfolgreich eingespielt");
                 } catch (e) {
                     console.error("Backup-Import fehlgeschlagen:", e);
-                    showToast("⚠️ Datei konnte nicht gelesen werden - ist es ein gültiges Backup?");
+                    showToast("Datei konnte nicht gelesen werden - ist es ein gültiges Backup?");
                 }
             };
-            reader.onerror = function() { showToast("⚠️ Datei konnte nicht gelesen werden"); };
+            reader.onerror = function() { showToast("Datei konnte nicht gelesen werden"); };
             reader.readAsText(file);
         },
         { confirmLabel: "einspielen", icon: "data:image/png;base64,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", danger: true }
@@ -2615,7 +2642,7 @@ function renderPantry() {
                     ${penBtn}
                     ${xBtn}
                     <div class="circle-container" id="circle-container-${index}">
-                        ${hasRealImage(item.image) ? `<img class="${isPhotoLoading(item.image) ? "photo-loading" : ""}" src="${imgSrcFor(item.image)}" data-photo-id="${photoRefId(item.image)}">` : `<div class="no-image-placeholder"></div>`}
+                        ${imageOrPlaceholderHtml(item.image)}
                         <svg viewBox="0 0 160 160">
                             <circle cx="80" cy="80" r="70" fill="none" stroke="${ringColor}" stroke-width="8" 
                                     stroke-dasharray="439.82" stroke-dashoffset="${strokeDashoffset}" 
@@ -3104,7 +3131,7 @@ async function handleAiCamCapture(input) {
         return;
     }
 
-    showAiLoadingOverlay(["📷 Bild wird analysiert...", "🔍 Erkenne Lebensmittel...", "🧠 KI denkt nach...", "⏳ Fast fertig..."]);
+    showAiLoadingOverlay(["Bild wird analysiert...", "Erkenne Lebensmittel...", "KI denkt nach...", "Fast fertig..."]);
     try {
         let photoBase64 = await resizeImageToBase64(file, 1024, 0.8);
         aiSourcePhoto = photoBase64;
@@ -3115,7 +3142,7 @@ async function handleAiCamCapture(input) {
     } catch (e) {
         hideAiLoadingOverlay();
         console.error("Bilderkennung fehlgeschlagen:", e);
-        showToast("⚠️ " + (e && e.message ? e.message : "Bilderkennung fehlgeschlagen"));
+        showToast(e && e.message ? e.message : "Bilderkennung fehlgeschlagen");
     }
 }
 
@@ -3125,7 +3152,7 @@ async function handleAiCamCapture(input) {
 async function recognizeFoodItems(photoBase64DataUrl) {
     let apiKey = getGeminiApiKey();
     if (!apiKey) {
-        showToast("⚠️ Kein Gemini API-Key hinterlegt");
+        showToast("Kein Gemini API-Key hinterlegt");
         return [];
     }
     let base64Data = photoBase64DataUrl.split(",")[1];
@@ -3136,7 +3163,7 @@ Achte zusätzlich darauf, ob auf einer Verpackung ein Mindesthaltbarkeitsdatum (
 
 Folgende Produktnamen gibt es bereits im Sortiment dieser App: ${sortimentListe}.
 Prüfe für JEDES erkannte Lebensmittel, ob es sich dabei um eine konkrete Art, Marke oder Variante EINES dieser Sortiments-Einträge handelt (Subkategorie-Beziehung, "ist ein/eine"). Beispiel: "Gouda-Scheibenkäse" ist eine Art von "Schnittkäse" -> gib in diesem Fall "Schnittkäse" zurück (nicht "Gouda" und nicht das allgemeine Wort "Käse"), damit die App das Produkt korrekt zuordnen kann.
-Gib NIEMALS einen Sortiments-Namen zurück, nur weil ein Produkt optisch ähnlich aussieht oder zur gleichen Oberkategorie gehört, wenn es inhaltlich KEINE Unterart davon ist. Beispiel: Eine "Saure Gurke" ist KEINE "Salatgurke" (auch wenn "Salatgurke" im Sortiment ist und beides Gurken sind) - hier NICHT zuordnen, sondern den eigenen, spezifischen Namen "Saure Gurke" zurückgeben, auch wenn dieser nicht im Sortiment vorkommt.
+Gib NIEMALS einen Sortiments-Namen zurück, nur weil ein Produkt optisch ähnlich aussieht oder zur gleichen Oberkategorie gehört, wenn es inhaltlich KEINE Unterart davon ist. Beispiel: Eine "Saure Gurke" ist KEINE "Salatgurke" (auch wenn "Salatgurke" im Sortiment ist und beides Gurken sind) - hier NICHT zuordnen, sondern den eigenen, spezifischen Namen "Saure Gurke" zurückgeben, auch wenn dieser nicht im Sortiment vorkommt. Genauso ist ein "Wrap" (Tortilla-Fladen) KEINE Unterart von "Brot", auch wenn beides Getreide-/Teigprodukte sind, die man mit Belag isst - andere Textur, Zubereitung und Haltbarkeit -> eigenen Namen "Wrap" zurückgeben, selbst wenn "Brot" im Sortiment existiert.
 Im Zweifel gilt: nur zuordnen bei echter Ist-eine-Art-von-Beziehung, nicht bei bloßer Ähnlichkeit, gleicher Zutat oder gleicher Oberkategorie.
 Zusätzliche, WICHTIGE Bedingung für jede Zuordnung: Das erkannte Produkt muss auch UNGEFÄHR GLEICH GELAGERT werden und eine ähnliche Haltbarkeit haben wie der Sortiments-Eintrag (Zuordnung dient dazu, dessen Lagerort-/Haltbarkeits-Logik zu übernehmen). Weicht die tatsächliche Lagerung erkennbar ab (z.B. weil das Produkt laut Verpackung/Aussehen TIEFGEKÜHLT ist, während der Sortiments-Eintrag ein normales, ungefrorenes Produkt meint), NICHT zuordnen, auch wenn es inhaltlich dieselbe Art Lebensmittel ist. Beispiel: Ein tiefgekühltes Baguette ist KEINE Unterart von "Brot" im Sortiment (falls dieses ein normales, nicht gefrorenes Brot meint) - unterschiedliche Lagerung/Haltbarkeit -> eigener Name "Tiefkühlbaguette" statt "Brot". Das Gouda-Scheibenkäse-Beispiel oben funktioniert dagegen, weil beide etwa gleich gelagert werden und ähnlich lange haltbar sind.
 WICHTIG bei mehreren gleichen Exemplaren (z.B. 3 Tomaten, 6 Eiern): Erzeuge dafür NUR EINEN einzigen Eintrag im Ergebnis-Array mit der Gesamt-Stückzahl in 'menge' (z.B. {'name': 'Tomate', 'menge': 3, ...}) - NIEMALS mehrere separate Einträge für dasselbe Produkt.
@@ -3510,8 +3537,7 @@ function renderAiRecognitionReview() {
     ];
     let rows = aiRecognizedItems.map(it => {
         let match = findCatalogMatch(it.name);
-        let imgSrc = it.customImage ? imgSrcFor(it.customImage) : (match ? imgSrcFor(match.image) : imgSrcFor(NOPIC_IMAGE));
-        let imgPhotoId = it.customImage ? photoRefId(it.customImage) : (match ? photoRefId(match.image) : "");
+        let rawImg = it.customImage || (match ? match.image : null);
         // Tile-Hintergrund = Kategoriefarbe des erkannten Produkts (statt nur ein
         // Rand ums Bild). Unbekannte/nicht zugeordnete Produkte ("Geheimzutat"-artig)
         // bekommen den lila Neutralton, der auch sonst für sie verwendet wird.
@@ -3528,7 +3554,7 @@ function renderAiRecognitionReview() {
 
             <div style="display:flex; align-items:center; gap:10px; margin:2px 30px 0 30px;">
                 <div style="position:relative; flex-shrink:0; width:46px; height:46px;">
-                    <img id="aiImg${it.id}" src="${imgSrc}" data-photo-id="${imgPhotoId}" style="width:46px; height:46px; object-fit:cover; border-radius:50%; background:rgba(255,255,255,0.3); border:2px solid rgba(255,255,255,0.5);">
+                    <div id="aiThumbWrap${it.id}">${aiThumbHtml(it.id, rawImg)}</div>
                     <label title="eigenes Foto" style="position:absolute; bottom:-3px; right:-3px; width:19px; height:19px; background:rgba(0,0,0,0.55); border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; border:1.5px solid white;">
                         <img src="data:image/png;base64,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" style="width:10px; height:10px; filter:brightness(0) invert(1); object-fit:contain;">
                         <input type="file" accept="image/*" style="display:none;" onchange="handleAiItemPhoto(${it.id}, this)">
@@ -3547,7 +3573,7 @@ function renderAiRecognitionReview() {
                 <input type="number" min="0" step="any" value="${it.menge}" oninput="updateAiItem(${it.id}, 'menge', this.value)" style="width:44px; text-align:center; font-size:14px; ${fieldStyle}">
                 <select onchange="updateAiItem(${it.id}, 'einheit', this.value)" style="font-size:13px; width:44px; flex-shrink:0; ${fieldStyle}">${unitSelectOptions}</select>
                 <input id="aiMhd${it.id}" type="text" inputmode="numeric" maxlength="8" placeholder="TT|MM|JJ" value="${it.mhd || ""}" oninput="formatDatePillInput(this); updateAiItem(${it.id}, 'mhd', this.value)" style="flex:1; min-width:0; text-align:center; font-size:13px; ${fieldStyle}">
-                <div id="aiStorageWrap${it.id}">${aiStoragePickerHtml(it.id, storageOptions, it.storage)}</div>
+                <div id="aiStorageWrap${it.id}">${aiStoragePickerHtml(it.id, storageOptions, it.storage, !!match)}</div>
             </div>
 
             <div id="aiOpenedWrap${it.id}" style="display:${match ? "none" : "flex"}; align-items:center; justify-content:center; gap:8px; margin-top:8px;">
@@ -3579,7 +3605,16 @@ function renderAiRecognitionReview() {
 // Farbe des aktuell gewählten Lagerorts, und ein (zunächst verstecktes)
 // Popover mit einem Icon-Button je gültigem Lagerort. Wird sowohl beim
 // ersten Rendern als auch beim Nachfüllen nach einer Namensänderung genutzt.
-function aiStoragePickerHtml(id, storageOptions, current) {
+function aiStoragePickerHtml(id, storageOptions, current, enabled) {
+    if (!enabled) {
+        return `
+            <div style="position:relative; flex-shrink:0;">
+                <button type="button" disabled title="Lagerort nur bei Sortiments-Produkten wählbar (nur dort ist eine Haltbarkeit hinterlegt)" style="background:rgba(255,255,255,0.15); border:2px solid rgba(255,255,255,0.3); border-radius:50%; width:36px; height:36px; padding:0; cursor:not-allowed; color:rgba(255,255,255,0.5); display:flex; align-items:center; justify-content:center;">
+                    <span style="font-size:15px; line-height:1;">–</span>
+                </button>
+            </div>
+        `;
+    }
     let triggerColor = current ? getStorageColor(current) : "rgba(255,255,255,0.3)";
     let triggerIcon = current
         ? `<img src="${getStorageIconSmall(current)}" style="width:16px; height:16px; object-fit:contain; filter:brightness(0) invert(1);">`
@@ -3659,20 +3694,21 @@ function updateAiItem(id, field, value) {
 
     if (field === "name") {
         let match = findCatalogMatch(it.name);
-        let imgEl = document.getElementById("aiImg" + id);
-        if (imgEl && !it.customImage) {
-            imgEl.src = match ? imgSrcFor(match.image) : imgSrcFor(NOPIC_IMAGE);
-            imgEl.setAttribute("data-photo-id", match ? photoRefId(match.image) : "");
+        if (!it.customImage) {
+            let wrap = document.getElementById("aiThumbWrap" + id);
+            if (wrap) wrap.innerHTML = aiThumbHtml(id, match ? match.image : null);
         }
 
         // Lagerort-Auswahl an das (neue) erkannte Produkt anpassen: nur die dafür
         // tatsächlich sinnvollen Lagerorte anbieten (z.B. bei Milch nur Kühlschrank),
         // nicht mehr alle fünf. Bereits gewählter Lagerort bleibt erhalten, falls er
         // für das neue Produkt noch gültig ist, sonst wird die Auswahl zurückgesetzt.
+        // Ohne Sortiments-Treffer ist kein Lagerort wählbar (siehe aiStoragePickerHtml)
+        // - dort existiert keine hinterlegte Haltbarkeit, die er beeinflussen könnte.
         let storageOptions = storageOptionsForMatch(match);
-        if (!storageOptions.includes(it.storage)) it.storage = "";
+        if (!match || !storageOptions.includes(it.storage)) it.storage = "";
         let storageWrap = document.getElementById("aiStorageWrap" + id);
-        if (storageWrap) storageWrap.innerHTML = aiStoragePickerHtml(id, storageOptions, it.storage);
+        if (storageWrap) storageWrap.innerHTML = aiStoragePickerHtml(id, storageOptions, it.storage, !!match);
 
         // Die manuelle "geöffnet"-Eingabe ist nur bei unbekannten Produkten
         // sinnvoll (siehe Kommentar bei confirmAiRecognition) - bei bekannten
@@ -3714,11 +3750,8 @@ async function handleAiItemPhoto(id, input) {
     it.usingCrop = false;
     let cropCheck = document.getElementById("aiCropCheck" + id);
     if (cropCheck) cropCheck.checked = false;
-    let imgEl = document.getElementById("aiImg" + id);
-    if (imgEl) {
-        imgEl.src = imgSrcFor(ref);
-        imgEl.setAttribute("data-photo-id", photoRefId(ref));
-    }
+    let wrap = document.getElementById("aiThumbWrap" + id);
+    if (wrap) wrap.innerHTML = aiThumbHtml(id, ref);
 }
 
 // Schneidet aus dem zuletzt an Gemini geschickten Foto (aiSourcePhoto) den
@@ -3758,7 +3791,7 @@ function cropFromAiSourcePhoto(box) {
 async function toggleAiCropImage(id, checkbox) {
     let it = aiRecognizedItems.find(x => x.id === id);
     if (!it) return;
-    let imgEl = document.getElementById("aiImg" + id);
+    let wrap = document.getElementById("aiThumbWrap" + id);
     if (checkbox.checked) {
         if (!it.box) { checkbox.checked = false; return; }
         try {
@@ -3766,23 +3799,17 @@ async function toggleAiCropImage(id, checkbox) {
             let ref = storePhoto(croppedDataUrl);
             it.customImage = ref;
             it.usingCrop = true;
-            if (imgEl) {
-                imgEl.src = imgSrcFor(ref);
-                imgEl.setAttribute("data-photo-id", photoRefId(ref));
-            }
+            if (wrap) wrap.innerHTML = aiThumbHtml(id, ref);
         } catch (e) {
             console.error("Bildausschnitt fehlgeschlagen:", e);
             checkbox.checked = false;
-            showToast("⚠️ Ausschnitt fehlgeschlagen");
+            showToast("Ausschnitt fehlgeschlagen");
         }
     } else {
         it.customImage = null;
         it.usingCrop = false;
         let match = findCatalogMatch(it.name);
-        if (imgEl) {
-            imgEl.src = match ? imgSrcFor(match.image) : imgSrcFor(NOPIC_IMAGE);
-            imgEl.setAttribute("data-photo-id", match ? photoRefId(match.image) : "");
-        }
+        if (wrap) wrap.innerHTML = aiThumbHtml(id, match ? match.image : null);
     }
 }
 
@@ -4124,7 +4151,7 @@ function renderEditProductElement(category, mode, p) {
 const SPOILAGE_TAGS = [
     { key: "essbar",      label: "noch essbar", color: "#52aa5e", icon: "✓" },
     { key: "grenzwertig", label: "grenzwertig",  color: "#d4a017", icon: "!" },
-    { key: "wegwerfen",   label: "wegwerfen",    color: "#cc4444", icon: "🗑" }
+    { key: "wegwerfen",   label: "wegwerfen",    color: "#cc4444", icon: "✕" }
 ];
 
 function _spoilageTagColor(key) {
@@ -4396,7 +4423,7 @@ function showMHD(uid) {
     let remaining = activeItem ? getRemainingTime(activeItem) : (shelfLifeDays[key] ? Math.max(...Object.values(shelfLifeDays[key])) * 86400000 : 7 * 86400000);
     let bg = getColor(remaining);
     let ringColor = getRingColor(remaining);
-    let imgHtml = hasRealImage(activeItem && activeItem.image) ? `<img class="${isPhotoLoading(activeItem.image) ? "photo-loading" : ""}" src="${imgSrcFor(activeItem.image)}" data-photo-id="${photoRefId(activeItem.image)}">` : `<div class="no-image-placeholder"></div>`;
+    let imgHtml = imageOrPlaceholderHtml(activeItem && activeItem.image);
     let maxDays = 7;
     let ratio = Math.max(0, Math.min(1, remaining / (maxDays * 86400000)));
     let strokeDashoffset = 439.82 * (1 - ratio);
@@ -5077,12 +5104,12 @@ Lass Punkte, die für "${name}" trivial/allgemein bekannt sind (z.B. "Tiefkühlp
                         if (closedEl && fieldReview.closedPlausible === false) {
                             anyFlag = true;
                             closedEl.style.borderLeft = "4px solid " + flaggedColor;
-                            closedEl.title += `  ⚠ Plausibilitäts-Check: ${fieldReview.note || "wirkt im Vergleich zu anderen Lagerorten unplausibel"}`;
+                            closedEl.title += `  Plausibilitäts-Check: ${fieldReview.note || "wirkt im Vergleich zu anderen Lagerorten unplausibel"}`;
                         }
                         if (openedEl && fieldReview.openedPlausible === false) {
                             anyFlag = true;
                             openedEl.style.borderLeft = "4px solid " + flaggedColor;
-                            openedEl.title += `  ⚠ Plausibilitäts-Check: ${fieldReview.note || "wirkt im Vergleich zu anderen Lagerorten unplausibel"}`;
+                            openedEl.title += `  Plausibilitäts-Check: ${fieldReview.note || "wirkt im Vergleich zu anderen Lagerorten unplausibel"}`;
                         }
                     });
                     if (anyFlag) note += " - Plausibilitäts-Check hat Auffälligkeiten markiert, bitte prüfen";
@@ -6916,7 +6943,7 @@ function pushLocalDataToCloud() {
     let payload = collectSyncPayload();
     warnIfSyncPayloadTooBig(payload);
     syncDb.collection("households").doc(syncCode).set(payload, { merge: true })
-        .catch(e => { console.warn("Upload fehlgeschlagen:", e); showToast("⚠️ Sync-Fehler beim Hochladen"); });
+        .catch(e => { console.warn("Upload fehlgeschlagen:", e); showToast("Sync-Fehler beim Hochladen"); });
 }
 
 // Firestore-Dokumente dürfen max. 1 MiB groß sein. Bei vielen/großen Fotos (Produktbilder,
@@ -6927,7 +6954,7 @@ function warnIfSyncPayloadTooBig(payload) {
     let sizeBytes = new Blob([JSON.stringify(payload)]).size;
     if (sizeBytes > 900 * 1024 && Date.now() - _lastSyncSizeWarning > 15000) {
         _lastSyncSizeWarning = Date.now();
-        showToast("⚠️ Sync-Daten fast zu groß (viele Fotos) – Cloud-Sicherung könnte fehlschlagen");
+        showToast("Sync-Daten fast zu groß (viele Fotos) - Cloud-Sicherung könnte fehlschlagen");
     }
 }
 
@@ -6939,7 +6966,7 @@ function scheduleSyncUpload() {
         let payload = collectSyncPayload();
         warnIfSyncPayloadTooBig(payload);
         syncDb.collection("households").doc(syncCode).set(payload, { merge: true })
-            .catch(e => { console.warn("Sync-Upload fehlgeschlagen:", e); showToast("⚠️ Sync-Upload fehlgeschlagen"); });
+            .catch(e => { console.warn("Sync-Upload fehlgeschlagen:", e); showToast("Sync-Upload fehlgeschlagen"); });
     }, 700);
 }
 
@@ -6955,7 +6982,7 @@ function startSyncListener(code) {
         },
         (error) => {
             console.warn("Sync-Verbindung verloren:", error);
-            showToast("⚠️ Sync-Verbindung unterbrochen");
+            showToast("Sync-Verbindung unterbrochen");
         }
     );
 }
@@ -6964,7 +6991,7 @@ function startSyncListener(code) {
 function joinSyncCode(inputCode) {
     let code = (inputCode || "").trim().toUpperCase();
     if (!code) { showToast("Bitte einen Code eingeben"); return; }
-    if (!initFirebase()) { showToast("⚠️ Sync nicht verfügbar"); return; }
+    if (!initFirebase()) { showToast("Sync nicht verfügbar"); return; }
 
     syncDb.collection("households").doc(code).get().then((doc) => {
         if (!doc.exists) {
@@ -6981,13 +7008,13 @@ function joinSyncCode(inputCode) {
         showToast("verbunden mit " + (syncGroupName || syncCode));
     }).catch((e) => {
         console.warn("Beitreten fehlgeschlagen:", e);
-        showToast("⚠️ Fehler beim Verbinden");
+        showToast("Fehler beim Verbinden");
     });
 }
 
 // Erstellt einen neuen Code und lädt die aktuellen lokalen Daten hoch
 function createNewSyncCode() {
-    if (!initFirebase()) { showToast("⚠️ Sync nicht verfügbar"); return; }
+    if (!initFirebase()) { showToast("Sync nicht verfügbar"); return; }
     let nameInput = document.getElementById("newGroupNameInput");
     syncGroupName = nameInput ? nameInput.value.trim() : "";
     try { localStorage.setItem(SYNC_GROUP_NAME_KEY, syncGroupName); } catch (e) {}
