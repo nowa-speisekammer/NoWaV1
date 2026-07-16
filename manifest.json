@@ -1,6 +1,6 @@
 {
-  "name": "Meine Lebensmittel",
-  "short_name": "Lebensmittel",
+  "name": "NoWa",
+  "short_name": "NoWa",
   "description": "Vorratsverwaltung mit Ablaufdaten, Einkaufsliste und KI-Rezeptideen.",
   "start_url": "./index.html",
   "scope": "./",
