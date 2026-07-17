@@ -2463,11 +2463,9 @@ function copyPantryListForAI() {
 
 function relativeExpiredLabel(dOver) {
     if (dOver <= 0) return "today";
-    if (dOver === 1) return "1 day ago";
-    if (dOver < 7) return `${dOver} days ago`;
+    if (dOver < 7) return `${dOver}d ago`;
     let weeks = Math.floor(dOver / 7);
-    if (weeks === 1) return "1 week ago";
-    return `${weeks} weeks ago`;
+    return `${weeks}w ago`;
 }
 
 function getColor(remaining) {
