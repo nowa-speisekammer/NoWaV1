@@ -1004,6 +1004,12 @@ input[type="number"]::-webkit-inner-spin-button {
     .circle-container {
         width: 111.3px;
         height: 111.3px;
+        /* Eat-Icon-Button oben mittig wird bei dieser Verkleinerung NICHT
+           mitskaliert (bleibt top:3px/22px groß wie am Laptop), rutscht dadurch
+           relativ gesehen tiefer in die Kachel. Bild+Sanduhr-Ring hier minimal
+           nach unten schieben (nur optisch, kein Einfluss auf Kachelgröße/
+           Abstand zum Produktnamen, da transform den Layout-Fluss nicht ändert). */
+        transform: translateY(4px);
     }
 
     .circle-container img {
