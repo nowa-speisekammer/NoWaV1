@@ -5564,12 +5564,12 @@ function showMHD(uid) {
     // scroll-snap) oder per Pfeil-Button. Bei nur einer Instanz ganz normal
     // zentriert ohne Karussell-Drumherum.
     let carouselHtml = matches.length > 1 ? `
-        <div style="position:relative; width:100%; max-width:460px; margin:0 auto;">
+        <div style="position:relative; width:calc(100% + 40px); max-width:500px; margin:0 -20px;">
             <div id="mhd-carousel-track" class="mhd-carousel-track" style="display:flex; overflow-x:auto; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; padding:0 calc(50% - 115px);" onscroll="_mhdCarouselSyncArrows()">
                 ${tilesHtml}
             </div>
-            <button id="mhd-carousel-arrow-left" onclick="mhdCarouselScroll(-1)" aria-label="vorheriges" style="position:absolute; left:2px; top:50%; transform:translateY(-50%); width:34px; height:34px; border-radius:50%; border:none; background:rgba(0,0,0,0.4); color:white; font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:opacity 0.2s; opacity:0.25; pointer-events:none;">&#9664;</button>
-            <button id="mhd-carousel-arrow-right" onclick="mhdCarouselScroll(1)" aria-label="nächstes" style="position:absolute; right:2px; top:50%; transform:translateY(-50%); width:34px; height:34px; border-radius:50%; border:none; background:rgba(0,0,0,0.4); color:white; font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:opacity 0.2s;">&#9654;</button>
+            <button id="mhd-carousel-arrow-left" onclick="mhdCarouselScroll(-1)" aria-label="vorheriges" style="position:absolute; left:2px; top:50%; transform:translateY(-50%); width:34px; height:34px; border-radius:50%; border:none; background:rgba(0,0,0,0.4); color:white; font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:opacity 0.2s; opacity:0.25; pointer-events:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button id="mhd-carousel-arrow-right" onclick="mhdCarouselScroll(1)" aria-label="nächstes" style="position:absolute; right:2px; top:50%; transform:translateY(-50%); width:34px; height:34px; border-radius:50%; border:none; background:rgba(0,0,0,0.4); color:white; font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:opacity 0.2s;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
     ` : `<div style="display:flex; justify-content:center;">${tilesHtml}</div>`;
 
