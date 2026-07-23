@@ -217,6 +217,41 @@ body {
     transform: rotate(-90deg);
 }
 
+/* "Sticker" fürs Produktfoto (siehe editPantryQty()/pantryLabelsEnabled), z.B.
+   "Anton"/"gemeinsam" - bewusst wie ein schräg aufgeklebtes Preis-/Namensschild
+   gestaltet (leichte Rotation, heller Rand, Schatten), nicht wie ein
+   generisches UI-Badge. Absolut positioniert über dem unteren Bereich des
+   Fotos (innerhalb des Bildkreises, NICHT im schmalen Fortschritts-Ring davor/
+   dahinter - der Ring liegt nur in einem sehr schmalen Band direkt am Rand
+   des 160px-Containers) - dadurch ändert sich die Tile-Höhe NIE, egal ob ein
+   Label gesetzt ist, entfernt wird oder das Feature komplett aus ist. */
+.pantry-label-sticker {
+    position: absolute;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%) rotate(-5deg);
+    z-index: 3;
+    max-width: 78%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #fff;
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    border-radius: 6px;
+    padding: 3px 10px;
+    border: 1.5px solid rgba(255,255,255,0.9);
+    box-shadow: 0 3px 6px rgba(0,0,0,0.32);
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+.product.active .pantry-label-sticker {
+    opacity: 0;
+}
+
 .button-overlay {
     position: absolute;
     top: 0;
@@ -530,14 +565,16 @@ input[type="number"]::-webkit-inner-spin-button {
 .file-input-wrapper {
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: center;
     gap: 6px;
-    width: 180px;
+    min-width: 180px;
+    width: fit-content;
+    max-width: 100%;
     height: 50px;
     margin: 8px auto;
     color: white;
     border-radius: 14px;
-    padding: 0 14px;
+    padding: 0 18px;
     box-sizing: border-box;
     box-shadow: 0 2px 6px rgba(0,0,0,0.15);
     font-family: 'Lucida Console', 'Courier New', monospace;
@@ -559,6 +596,16 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .file-input-wrapper .file-label-text {
     white-space: nowrap;
+}
+
+/* Datenblatt-Karussell (mehrere Instanzen desselben Produkts): Scrollbar
+   optisch verstecken, das native Wischen/Scrollen bleibt voll funktionsfähig. */
+.mhd-carousel-track {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.mhd-carousel-track::-webkit-scrollbar {
+    display: none;
 }
 
 .delete-custom-btn {
@@ -1207,6 +1254,17 @@ let savedShoppingLabels = [];
 // leer = alle Artikel anzeigen. Bewusst NICHT dauerhaft gespeichert, damit die
 // Liste beim nächsten Öffnen wieder ungefiltert startet.
 let shoppingListFilterLabel = "";
+
+// Optionale, standardmäßig AUS geschaltete Zusatzfunktion: Notizen/Labels an
+// Speisekammer-Produkten (z.B. "Anton", "gemeinsam" - z.B. für eine WG, um
+// zu markieren, wem ein Produkt gehört bzw. ob es privat/gemeinsam ist).
+// Getrennt von shoppingLabelsEnabled/savedShoppingLabels, da Zweck und Ort
+// unterschiedlich sind (Speisekammer-Tile statt Einkaufslisten-Eintrag).
+let pantryLabelsEnabled = false;
+// Vom Nutzer selbst gepflegte, dauerhaft gespeicherte Label-Vorschläge für die
+// Speisekammer (analog zu savedShoppingLabels), damit man sie beim Setzen nur
+// antippen statt jedes Mal neu tippen muss.
+let savedPantryLabels = [];
 
 // ── Optionale Kategorie-Sortierung der Einkaufsliste ──
 // Standardmäßig AUS: dann bleibt die Einkaufsliste wie bisher (Reihenfolge =
@@ -1995,7 +2053,7 @@ function saveCustomData() {
             // mit denselben Bildern doppelt und führt zu "storage full".
             pantry: pantry.map(stripCatalogImageForSync),
             history: history.map(stripCatalogImageForSync), historyPageEnabled, statsEnabled, nutritionEnabled, nutritionOverviewFields, historyStats, historyStatsResetAt, productStats,
-            hiddenProducts, shoppingList, shoppingListChecked, qtyMode, shoppingLabelsEnabled, savedShoppingLabels, recipes,
+            hiddenProducts, shoppingList, shoppingListChecked, qtyMode, shoppingLabelsEnabled, savedShoppingLabels, pantryLabelsEnabled, savedPantryLabels, recipes,
             shoppingCategorySortEnabled, shoppingCategoryOrder,
             lastLocalUpdate
         }));
@@ -2052,6 +2110,8 @@ function loadCustomData() {
         if (data.qtyMode) qtyMode = data.qtyMode;
         if (typeof data.shoppingLabelsEnabled === "boolean") shoppingLabelsEnabled = data.shoppingLabelsEnabled;
         if (Array.isArray(data.savedShoppingLabels)) savedShoppingLabels = data.savedShoppingLabels;
+        if (typeof data.pantryLabelsEnabled === "boolean") pantryLabelsEnabled = data.pantryLabelsEnabled;
+        if (Array.isArray(data.savedPantryLabels)) savedPantryLabels = data.savedPantryLabels;
         applyShoppingCategorySortSettings(data);
         if (data.recipes) recipes = data.recipes;
         // Zeitstempel der letzten lokalen Änderung wiederherstellen (überlebt Neuladen/Schließen),
@@ -2094,7 +2154,7 @@ function buildBackupPayload() {
         customQualityWarnStorage, customQualityWarnStorageOpened,
         customOpenable, customOpenedDaysOverride, customOpenedShelfLifeDays,
         customSpoilageInfo, pantry, history, historyPageEnabled, statsEnabled, nutritionEnabled, nutritionOverviewFields, historyStats, historyStatsResetAt, productStats, hiddenProducts, shoppingList,
-        shoppingListChecked, qtyMode, shoppingLabelsEnabled, savedShoppingLabels, recipes, photoCache,
+        shoppingListChecked, qtyMode, shoppingLabelsEnabled, savedShoppingLabels, pantryLabelsEnabled, savedPantryLabels, recipes, photoCache,
         shoppingCategorySortEnabled, shoppingCategoryOrder
     };
 }
@@ -2208,6 +2268,8 @@ function applyBackupPayload(data) {
     if (data.qtyMode) qtyMode = data.qtyMode;
     if (typeof data.shoppingLabelsEnabled === "boolean") shoppingLabelsEnabled = data.shoppingLabelsEnabled;
     if (Array.isArray(data.savedShoppingLabels)) savedShoppingLabels = data.savedShoppingLabels;
+    if (typeof data.pantryLabelsEnabled === "boolean") pantryLabelsEnabled = data.pantryLabelsEnabled;
+    if (Array.isArray(data.savedPantryLabels)) savedPantryLabels = data.savedPantryLabels;
     applyShoppingCategorySortSettings(data);
     if (data.recipes) recipes = data.recipes;
     if (data.photoCache) {
@@ -2933,6 +2995,19 @@ function openSettingsMenu() {
                 <label for="nutritionToggle" style="font-size:11.5px; opacity:0.75; line-height:1.35; cursor:pointer;">Nährwerte für Rezepte aktivieren</label>
             </div>
 
+            <div style="margin-top:14px; display:flex; align-items:center; gap:7px; text-align:left;">
+                <input type="checkbox" id="pantryLabelsToggle" ${pantryLabelsEnabled ? "checked" : ""} onchange="togglePantryLabelsSetting(this.checked); document.getElementById('managePantryLabelsRowWrap').style.display = this.checked ? 'block' : 'none';" style="flex-shrink:0; width:15px; height:15px; margin:0; cursor:pointer;">
+                <label for="pantryLabelsToggle" style="font-size:11.5px; opacity:0.75; line-height:1.35; cursor:pointer;">Notizen/Labels für Speisekammer hinzufügen</label>
+            </div>
+            <div style="font-size:11px; opacity:0.5; margin:4px 0 0 4px; text-align:left;">z.B. um Produkte mit einem Namen ("Anton") oder "gemeinsam" zu markieren - praktisch in einer WG.</div>
+            <div id="managePantryLabelsRowWrap" style="display:${pantryLabelsEnabled ? "block" : "none"};">
+                <button class="settings-row-btn" onclick="document.getElementById('settingsMenuOverlay').remove(); managePantryLabels();" style="margin-top:8px; padding:6px 10px;">
+                    ${badge("data:image/png;base64,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", 24)}
+                    <span style="flex:1; font-size:12px; opacity:0.85;">Labels verwalten (${savedPantryLabels.length})</span>
+                    <span style="opacity:0.3; font-size:14px;">&rsaquo;</span>
+                </button>
+            </div>
+
             <div style="margin-top:20px;">
                 <button onclick="document.getElementById('settingsMenuOverlay').remove()" style="background:#999; color:white; border:none; border-radius:12px; padding:9px 22px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace; font-weight:bold; font-size:13px;">close</button>
             </div>
@@ -2960,6 +3035,92 @@ function setQtyMode(mode) {
 function toggleShoppingLabelsSetting(checked) {
     shoppingLabelsEnabled = checked;
     saveCustomData();
+}
+
+// Schaltet das optionale Notizen/Label-Feature der Speisekammer an/aus (siehe
+// Checkbox im Settings-Menü). Standardmäßig aus, damit die Speisekammer-Tiles
+// für alle, die es nicht brauchen, unverändert schlicht bleiben.
+function togglePantryLabelsSetting(checked) {
+    pantryLabelsEnabled = checked;
+    saveCustomData();
+    renderPantry();
+}
+
+// Fügt ein Label dauerhaft zu den gespeicherten Speisekammer-Vorschlägen hinzu
+// (analog zu addSavedShoppingLabel). Gibt true zurück, wenn es (neu) gespeichert wurde.
+function addSavedPantryLabel(label) {
+    label = (label || "").trim();
+    if (!label) return false;
+    if (savedPantryLabels.includes(label)) return true; // schon gespeichert
+    savedPantryLabels.push(label);
+    saveCustomData();
+    return true;
+}
+
+function removeSavedPantryLabel(label) {
+    savedPantryLabels = savedPantryLabels.filter(l => l !== label);
+    saveCustomData();
+}
+
+// Verwaltungs-Popup für die gespeicherten Speisekammer-Label-Vorschläge (z.B.
+// "Anton", "gemeinsam" in einer WG) - analog zu manageShoppingLabels(): beliebig
+// viele hinzufügen, bestehende per X entfernen. Erreichbar über den Settings-
+// Menü-Eintrag "Labels verwalten" (nur sichtbar, wenn das Feature aktiv ist).
+function managePantryLabels() {
+    let color = getActionBarColor();
+
+    function renderChips() {
+        if (savedPantryLabels.length === 0) {
+            return `<div style="font-size:11.5px; opacity:0.55; margin:10px 0;">noch keine Label gespeichert</div>`;
+        }
+        return `<div style="margin:10px 0; display:flex; flex-wrap:wrap; justify-content:center; gap:6px; max-width:280px;">${
+            savedPantryLabels.map(l => `
+                <span style="display:inline-flex; align-items:center; gap:5px; background:${color}; color:white; border-radius:10px; padding:4px 6px 4px 10px; font-size:12px;">
+                    ${escapeHtml(l)}
+                    <button type="button" class="manage-pantry-label-remove" data-label="${escapeHtml(l)}" style="background:none; border:none; padding:2px; cursor:pointer; opacity:0.85; display:flex; align-items:center; justify-content:center;"><img src="data:image/png;base64,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" style="width:11px; height:11px; filter:brightness(0) invert(1);"></button>
+                </span>`
+            ).join("")
+        }</div>`;
+    }
+
+    let overlay = createModal(`
+        <div class="custom-modal-box" style="--modal-accent:${color}; max-width:320px;">
+            <div class="custom-modal-message">Gespeicherte Label <span style="font-size:11px; opacity:0.55; font-weight:normal;">(${savedPantryLabels.length})</span></div>
+            <div id="managePantryLabelChips">${renderChips()}</div>
+            <div style="display:flex; gap:6px; margin-top:8px;">
+                <input id="managePantryLabelInput" type="text" placeholder="neues Label, z.B. Anton" onkeydown="if(event.key==='Enter') addManagedPantryLabelFromInput();" style="flex:1; box-sizing:border-box; border-radius:8px; border:1px solid #ccc; padding:7px 9px; font-size:13px; font-family:'Lucida Console','Courier New',monospace; text-align:center;">
+                <button onclick="addManagedPantryLabelFromInput()" style="background:${color}; border:none; border-radius:8px; width:36px; height:36px; flex-shrink:0; padding:0; cursor:pointer; display:flex; align-items:center; justify-content:center;"><img src="data:image/png;base64,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" style="width:16px; height:16px; filter:brightness(0) invert(1); object-fit:contain;"></button>
+            </div>
+            <div style="margin-top:16px;">
+                <button onclick="this.closest('.custom-modal-overlay').remove()" style="background:#999; color:white; border:none; border-radius:12px; padding:9px 22px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace; font-weight:bold; font-size:13px;">fertig</button>
+            </div>
+        </div>
+    `, {id: "managePantryLabelsOverlay", closeOnBackdrop: true});
+
+    function bindRemoveButtons() {
+        overlay.querySelectorAll(".manage-pantry-label-remove").forEach(btn => {
+            btn.onclick = function() {
+                removeSavedPantryLabel(btn.dataset.label);
+                document.getElementById("managePantryLabelChips").innerHTML = renderChips();
+                bindRemoveButtons();
+                let msgEl = overlay.querySelector(".custom-modal-message span");
+                if (msgEl) msgEl.textContent = `(${savedPantryLabels.length})`;
+            };
+        });
+    }
+    bindRemoveButtons();
+
+    window.addManagedPantryLabelFromInput = function() {
+        let input = document.getElementById("managePantryLabelInput");
+        if (!input) return;
+        if (addSavedPantryLabel(input.value)) {
+            input.value = "";
+            document.getElementById("managePantryLabelChips").innerHTML = renderChips();
+            bindRemoveButtons();
+            let msgEl = overlay.querySelector(".custom-modal-message span");
+            if (msgEl) msgEl.textContent = `(${savedPantryLabels.length})`;
+        }
+    };
 }
 
 // Baut die Zeilen der Kategorie-Reihenfolge-Liste in den Einstellungen (Icon,
@@ -3028,10 +3189,10 @@ function toggleNutritionSetting(checked) {
 // z.B. für jemanden, der dort nur Protein sehen will, statt aller vier Werte.
 // nutritionOverviewFields speichert die ausgewählten Keys.
 const NUTRITION_OVERVIEW_FIELD_DEFS = [
-    { key: "calories", label: "Kalorien", unit: "kcal" },
-    { key: "protein",  label: "Protein",  unit: "g" },
-    { key: "carbs",    label: "Kohlenhydrate", unit: "g" },
-    { key: "fat",      label: "Fett",     unit: "g" }
+    { key: "calories", label: "Kalorien", shortLabel: "Kcal", unit: "kcal" },
+    { key: "protein",  label: "Protein",  shortLabel: "Protein", unit: "g" },
+    { key: "carbs",    label: "Kohlenhydrate", shortLabel: "KH", unit: "g" },
+    { key: "fat",      label: "Fett",     shortLabel: "Fett", unit: "g" }
 ];
 
 function _nutritionOverviewSettingsHtml() {
@@ -3253,6 +3414,7 @@ function toggleOverlay(index, event) {
 function renderPantry() {
     pantry.sort((a, b) => getRemainingTime(a) - getRemainingTime(b));
     let html = "";
+    let color = getActionBarColor();
     let term = pantrySearchTerm.trim().toLowerCase();
     let displayList = pantry
         .map((item, index) => ({ item, index }))
@@ -3290,6 +3452,17 @@ function renderPantry() {
             let strokeDashoffset = 439.82 * (1 - ratio);
 
             let qtyDisplay = (qtyMode === "both") ? `<div style="font-size:0.72em; font-weight:300; opacity:0.7; margin-top:2px; ${item.qty ? "" : "visibility:hidden;"}">${item.qty ? item.qty + (item.qtyUnit ? " " + item.qtyUnit : "") : "--"}</div>` : "";
+            // Minimalistisches Label-Pill (z.B. "Anton", "gemeinsam" - siehe
+            // Kleines Sticker-Label auf dem Produktfoto (z.B. "Anton",
+            // "gemeinsam" - siehe editPantryQty()), nur wenn das Feature aktiv
+            // ist und für dieses Produkt tatsächlich ein Label gesetzt wurde.
+            // Bewusst absolut positioniert (siehe .pantry-label-sticker, CSS),
+            // damit es NIE zusätzlichen Platz braucht und sich die Tile-Größe
+            // dadurch nicht ändert - weder pro Produkt noch beim Ein-/Ausschalten
+            // des Features.
+            let labelDisplay = (pantryLabelsEnabled && item.label)
+                ? `<div class="pantry-label-sticker" style="background:${color};">${escapeHtml(item.label)}</div>`
+                : "";
             let penBtn = `<button onclick="event.stopPropagation(); editPantryQty(${index})" style="position:absolute; top:5px; right:5px; background:none; border:none; padding:2px; cursor:pointer; opacity:0.45; width:22px; height:22px; display:flex; align-items:center; justify-content:center; z-index:2;"><img src="data:image/png;base64,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" style="width:13px; height:13px; object-fit:contain;"></button>`;
             let xBtn = `<button onclick="event.stopPropagation(); removePantryItemAnimated(${index})" style="position:absolute; top:5px; left:5px; background:none; border:none; padding:2px; cursor:pointer; opacity:0.45; width:22px; height:22px; display:flex; align-items:center; justify-content:center; z-index:2;"><img src="data:image/png;base64,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" style="width:13px; height:13px; object-fit:contain;"></button>`;
             // Direkter "eaten"-Shortcut oben mittig: entfernt das Item wie der X-Button
@@ -3313,6 +3486,7 @@ function renderPantry() {
                                     stroke-dasharray="439.82" stroke-dashoffset="${strokeDashoffset}" 
                                     id="svg-circle-${index}" stroke-linecap="round"/>
                         </svg>
+                        ${labelDisplay}
                     </div>
                     <div class="product-name"><b>${item.name}</b>${openStateIcon}</div>
                     ${qtyDisplay}
@@ -4185,6 +4359,8 @@ Sehr wichtig zu Mengenangaben - jede Zutat (sowohl in "usedIngredients" als auch
 - Zutaten ohne Mengenangabe in der Speisekammer-Liste bekommen trotzdem eine passende "qty"/"unit" - frei sinnvoll gewählt, aber stimmig zu den anderen Mengen und der Portionsanzahl.
 - Soll von einer Zutat bewusst mehr verwendet werden als in der Speisekammer vorhanden ist, muss dafür extra eingekauft werden - führe sie dann NICHT unter "usedIngredients", sondern unter "missingIngredients" mit der vollen benötigten Menge.
 
+Extrem wichtig zu "name" (Namensabgleich mit der Speisekammer): Prüfe für JEDE Zutat zuerst, ob sie (auch unter einer leicht anderen Bezeichnung, z.B. mit "Natur-", "Bio-", "Voll-", einer anderen Schreibweise oder Singular/Plural) bereits in der Speisekammer-Liste oben steht. Ist das der Fall, MUSS "name" exakt (Zeichen für Zeichen, gleiche Schreibweise) aus der Speisekammer-Liste übernommen werden - erfinde keine eigene Umbenennung. "name" enthält AUSSCHLIESSLICH den reinen Produktnamen - NIEMALS ein Gebinde-/Zähl-/Maßwort wie "Zehe", "Bund", "Scheibe(n)", "Packung", "Dose", "Glas", "Prise", "Bündel", "Blatt", "Stange" oder "Stück" anhängen (falsch: "Knoblauch Zehe", "Brot Scheiben", "Frischkäse Packung", "Koriander Bund" - richtig: "Knoblauch", "Brot", "Frischkäse", "Koriander"). Solche Gebinde-/Zähleinheiten gehören NICHT nach "name" - falls die konkrete Stückelung für die Zubereitung wichtig ist (z.B. "1 Zehe Knoblauch", "1 Bund Koriander"), erwähne das stattdessen kurz in "instructions", während "name"/"qty"/"unit" trotzdem sauber getrennt bleiben (z.B. {"name": "Knoblauch", "qty": 1, "unit": ""}).
+
 Wichtig zu Zutaten-Ersatz: Ist eine im Rezept eigentlich passende Zutat nicht in der Speisekammer vorhanden, aber ein anderes vorhandenes Lebensmittel würde in GENAU diesem Rezept geschmacklich/funktional genauso gut passen (z.B. normale Tomaten statt Cherry-/Rispentomaten in einer Sauce oder einem Eintopf, "H-Milch"/"Vollmilch"/"fettarme Milch" statt "Milch", brauner statt weißer Zucker, Naturjoghurt statt Sahne zum Verfeinern), dann verwende dieses vorhandene Lebensmittel und führe es unter "usedIngredients" mit SEINEM tatsächlichen Namen aus der Speisekammer-Liste auf (nicht mit dem Namen der ursprünglich gedachten Zutat) - erwähne den Ersatz kurz in der "description" oder den "instructions". Macht der Unterschied für das Rezept dagegen einen relevanten Unterschied und wäre ein anderes Speisekammer-Produkt KEIN sinnvoller Ersatz (z.B. Frühlingszwiebeln lassen sich meist NICHT einfach durch normale Zwiebeln ersetzen - anderer, milderer Geschmack und werden oft roh/als Topping statt mitgekocht verwendet; ebenso Sahne vs. Milch beim Aufschlagen, oder ein Käse mit ganz anderem Schmelzverhalten), führe stattdessen die tatsächlich benötigte Zutat unter "missingIngredients" auf. Entscheide das jeweils nach kulinarischem Hausverstand (wie ähnlich sich die Zutaten in diesem konkreten Rezept verhalten), nicht nach reiner Namensähnlichkeit.
 
 Wichtig zur Zutatenauswahl: Ein schmackhaftes, stimmiges Rezept hat IMMER Vorrang vor der Verwertung möglichst vieler Speisekammer-Zutaten. Misch nicht wahllos Zutaten in ein Gericht, nur damit mehr davon "vorhanden" markiert werden kann - jede genutzte Zutat muss geschmacklich zum Rezept passen. Nennt der Nutzer den Namen eines konkreten, traditionellen Gerichts (z.B. "Chana Masala", "Carbonara", "Ramen"), MUSS mindestens einer der Vorschläge die klassische, authentische Version dieses Gerichts mit den traditionell üblichen Zutaten sein - auch wenn dafür mehrere Zutaten fehlen und unter "missingIngredients" aufgeführt werden müssen. Die übrigen Vorschläge müssen trotzdem klar erkennbar mit diesem Gericht zu tun haben - z.B. eine an die Speisekammer angepasste Variante desselben Gerichts (z.B. mit anderem Gemüse), oder ein sehr ähnliches/verwandtes Gericht (z.B. eine andere Currysorte mit denselben Hülsenfrüchten). Schlage NICHT einfach thematisch unpassende, komplett andere Rezepte vor, nur um mehr Speisekammer-Zutaten zu verwerten - das genannte Gericht bzw. der Wunsch bleibt bei allen 4 Vorschlägen der rote Faden.
@@ -4194,7 +4370,7 @@ Antworte NUR mit einem JSON-Array, keine Erklärung, kein Markdown-Codeblock. Fo
 [{"title": "Kartoffel-Lauch-Suppe", "description": "Kurze, appetitliche 1-2 Satz Beschreibung.", "servings": 4, "usedIngredients": [{"name": "Kartoffel", "qty": 600, "unit": "g"}, {"name": "Lauch", "qty": 1, "unit": ""}], "missingIngredients": [{"name": "Sahne", "qty": 200, "unit": "ml"}], "instructions": "Kurze Schritt-für-Schritt-Anleitung als Fließtext."}]
 usedIngredients: NUR Namen, die exakt (oder eindeutig erkennbar) in der obigen Speisekammer-Liste stehen. missingIngredients: zusätzlich benötigte Zutaten außer den genannten Grundzutaten. Nutze deutsche Namen.`;
     } else {
-        promptText = `Zusätzlicher Wunsch: "${userWish}". Passe die Rezeptvorschläge entsprechend an (weiterhin möglichst viele Speisekammer-Zutaten nutzen, bevorzugt bald ablaufende, aber ein stimmiges, schmackhaftes Rezept hat Vorrang vor reiner Zutatenverwertung - misch nichts wahllos rein). Falls sich der Wunsch auf ein konkretes, traditionelles Gericht bezieht (z.B. "Chana Masala"), muss mindestens einer der Vorschläge die klassische, authentische Version mit den traditionell üblichen Zutaten sein, auch wenn dafür mehr unter "missingIngredients" fehlt. Die übrigen Vorschläge müssen trotzdem klar erkennbar mit dem Wunsch zu tun haben (z.B. eine an die Speisekammer angepasste Variante desselben Gerichts, oder ein sehr ähnliches/verwandtes Gericht) - schlage nicht einfach thematisch unpassende, andere Rezepte vor, die den Wunsch ignorieren. Halte dich weiterhin an die Mengen-Regeln und die Zutaten-Ersatz-Regel von zuvor: jede Zutat mit eigenem "qty"/"unit", für "usedIngredients" begrenzt durch den jeweiligen Bestand, eine dazu passende Portionsanzahl ("servings") gewählt und alle übrigen Mengen darauf abgestimmt; ein im Rezept fehlendes Lebensmittel durch ein in diesem Rezept kulinarisch gleichwertiges Speisekammer-Produkt ersetzen (unter dessen tatsächlichem Namen in "usedIngredients"), aber nur wenn es wirklich passt - sonst gehört die tatsächlich benötigte Zutat unter "missingIngredients".${aiRecipeOnlyAvailable ? ` Halte dich außerdem weiterhin an die "nur vorhandene Zutaten"-Regel von zuvor: "missingIngredients" muss in jedem Vorschlag leer bleiben ([]), ist das nicht sinnvoll möglich, antworte NUR mit dem {"error": "no_recipe", "message": "..."}-Objekt statt einem Array.` : ""} Antworte wieder NUR mit einem JSON-Array im selben Format wie zuvor, wieder 4 Vorschläge.`;
+        promptText = `Zusätzlicher Wunsch: "${userWish}". Passe die Rezeptvorschläge entsprechend an (weiterhin möglichst viele Speisekammer-Zutaten nutzen, bevorzugt bald ablaufende, aber ein stimmiges, schmackhaftes Rezept hat Vorrang vor reiner Zutatenverwertung - misch nichts wahllos rein). Falls sich der Wunsch auf ein konkretes, traditionelles Gericht bezieht (z.B. "Chana Masala"), muss mindestens einer der Vorschläge die klassische, authentische Version mit den traditionell üblichen Zutaten sein, auch wenn dafür mehr unter "missingIngredients" fehlt. Die übrigen Vorschläge müssen trotzdem klar erkennbar mit dem Wunsch zu tun haben (z.B. eine an die Speisekammer angepasste Variante desselben Gerichts, oder ein sehr ähnliches/verwandtes Gericht) - schlage nicht einfach thematisch unpassende, andere Rezepte vor, die den Wunsch ignorieren. Halte dich weiterhin an die Mengen-Regeln und die Zutaten-Ersatz-Regel von zuvor: jede Zutat mit eigenem "qty"/"unit", für "usedIngredients" begrenzt durch den jeweiligen Bestand, eine dazu passende Portionsanzahl ("servings") gewählt und alle übrigen Mengen darauf abgestimmt; ein im Rezept fehlendes Lebensmittel durch ein in diesem Rezept kulinarisch gleichwertiges Speisekammer-Produkt ersetzen (unter dessen tatsächlichem Namen in "usedIngredients"), aber nur wenn es wirklich passt - sonst gehört die tatsächlich benötigte Zutat unter "missingIngredients". Halte dich außerdem weiterhin an die "name"-Regel von zuvor: "name" ist immer der reine Produktname, exakt wie in der Speisekammer-Liste übernommen falls vorhanden, NIEMALS mit einem Gebinde-/Zähl-/Maßwort wie "Zehe", "Bund", "Scheibe", "Packung", "Dose" o.ä. vermischt.${aiRecipeOnlyAvailable ? ` Halte dich außerdem weiterhin an die "nur vorhandene Zutaten"-Regel von zuvor: "missingIngredients" muss in jedem Vorschlag leer bleiben ([]), ist das nicht sinnvoll möglich, antworte NUR mit dem {"error": "no_recipe", "message": "..."}-Objekt statt einem Array.` : ""} Antworte wieder NUR mit einem JSON-Array im selben Format wie zuvor, wieder 4 Vorschläge.`;
     }
 
     aiRecipeLoading = true;
@@ -5361,7 +5537,7 @@ function showMHD(uid) {
         let qtyDisplay = (qtyMode === "both") ? `<div style="font-size:0.72em; font-weight:300; opacity:0.7; margin-top:2px; ${it.qty ? "" : "visibility:hidden;"}">${it.qty ? it.qty + (it.qtyUnit ? " " + it.qtyUnit : "") : "--"}</div>` : "";
 
         return `
-            <div class="product" id="product-tile-${idx}" style="background:${bg};" onclick="toggleOverlay(${idx}, event)">
+            <div class="product" id="product-tile-${idx}" style="background:${bg}; scroll-snap-align:center; flex-shrink:0;" onclick="toggleOverlay(${idx}, event)">
                 <div class="circle-container" id="circle-container-${idx}">
                     ${hasRealImage(it.image) ? `<img class="${isPhotoLoading(it.image) ? "photo-loading" : ""}" src="${imgSrcFor(it.image)}" data-photo-id="${photoRefId(it.image)}">` : `<div class="no-image-placeholder"></div>`}
                     <svg viewBox="0 0 160 160">
@@ -5381,11 +5557,25 @@ function showMHD(uid) {
         `;
     }).join("");
 
-    let html = `
-        <div style="display: flex; flex-direction: column; align-items: center; padding: 20px;">
-            <div style="display:flex; flex-wrap:wrap; justify-content:center; max-width:460px;">
+    // Mehrere Instanzen desselben Produkts (z.B. 2x Tomate): statt sie
+    // untereinander/nebeneinander umbrechen zu lassen, als horizontales
+    // Swipe-Karussell zeigen - genau eine Kachel voll sichtbar, Nachbarn
+    // links/rechts nur angeschnitten. Wechsel per Wischen (nativ dank
+    // scroll-snap) oder per Pfeil-Button. Bei nur einer Instanz ganz normal
+    // zentriert ohne Karussell-Drumherum.
+    let carouselHtml = matches.length > 1 ? `
+        <div style="position:relative; width:100%; max-width:460px; margin:0 auto;">
+            <div id="mhd-carousel-track" class="mhd-carousel-track" style="display:flex; overflow-x:auto; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; padding:0 calc(50% - 115px);" onscroll="_mhdCarouselSyncArrows()">
                 ${tilesHtml}
             </div>
+            <button id="mhd-carousel-arrow-left" onclick="mhdCarouselScroll(-1)" aria-label="vorheriges" style="position:absolute; left:2px; top:50%; transform:translateY(-50%); width:34px; height:34px; border-radius:50%; border:none; background:rgba(0,0,0,0.4); color:white; font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:opacity 0.2s; opacity:0.25; pointer-events:none;">&#9664;</button>
+            <button id="mhd-carousel-arrow-right" onclick="mhdCarouselScroll(1)" aria-label="nächstes" style="position:absolute; right:2px; top:50%; transform:translateY(-50%); width:34px; height:34px; border-radius:50%; border:none; background:rgba(0,0,0,0.4); color:white; font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:opacity 0.2s;">&#9654;</button>
+        </div>
+    ` : `<div style="display:flex; justify-content:center;">${tilesHtml}</div>`;
+
+    let html = `
+        <div style="display: flex; flex-direction: column; align-items: center; padding: 20px;">
+            ${carouselHtml}
 
             <div style="background: white; color: #333; padding: 20px; border-radius: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); text-align: left; max-width: 300px; width: 100%; margin-top:10px;">
     `;
@@ -5416,14 +5606,16 @@ function showMHD(uid) {
                 : "";
             html += `
                 <li style="background:${getStorageColor(k)}; color:white; border-radius:10px; padding:9px 12px; margin-bottom:6px; display:flex; align-items:center; gap:11px;">
-                    <div style="font-size:20px; line-height:1; flex-shrink:0;">${getStorageIcon(k)}</div>
-                    <div style="flex:1; font-size:13px; font-weight:500; display:flex; align-items:center; gap:5px;">${getStorageLabel(k)}${qualityBadge}</div>
-                    <div style="display:flex; align-items:center; gap:11px;">
-                        <div style="display:flex; align-items:center; gap:5px;">
-                            ${lockSvg}
-                            <span style="font-size:15px; font-weight:600;">${shelfLifeDays[key][k]}d</span>
+                    <div style="font-size:20px; line-height:1; flex-shrink:0; align-self:stretch; display:flex; align-items:center;">${getStorageIcon(k)}</div>
+                    <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:4px;">
+                        <div style="font-size:13px; font-weight:500; display:flex; align-items:center; gap:5px;">${getStorageLabel(k)}${qualityBadge}</div>
+                        <div style="display:flex; align-items:center; gap:11px; flex-wrap:wrap;">
+                            <div style="display:flex; align-items:center; gap:5px;">
+                                ${lockSvg}
+                                <span style="font-size:15px; font-weight:600; white-space:nowrap;">${shelfLifeDays[key][k]}d</span>
+                            </div>
+                            ${openedBlock}
                         </div>
-                        ${openedBlock}
                     </div>
                 </li>`;
         }
@@ -5442,6 +5634,36 @@ function showMHD(uid) {
         </div>
     `;
     document.getElementById("app").innerHTML = html;
+    // Pfeil-Zustand (ausgegraut am Anfang/Ende) direkt nach dem Rendern einmal
+    // initialisieren - erst nachdem der Track im DOM ist, hat scrollWidth/
+    // clientWidth einen sinnvollen Wert.
+    setTimeout(_mhdCarouselSyncArrows, 0);
+}
+
+// Scrollt das Datenblatt-Karussell (mehrere Instanzen desselben Produkts) um
+// genau eine Kachel nach links (-1) oder rechts (+1) - der Abstand wird live
+// aus den tatsächlich gerenderten Kacheln gemessen, damit er auch bei
+// abweichenden Bildschirmgrößen/Margins immer exakt eine Kachel weiterspringt.
+function mhdCarouselScroll(dir) {
+    let track = document.getElementById('mhd-carousel-track');
+    if (!track || track.children.length < 2) return;
+    let step = track.children[1].offsetLeft - track.children[0].offsetLeft;
+    track.scrollBy({ left: dir * step, behavior: 'smooth' });
+}
+
+// Blendet die Karussell-Pfeile dezent aus, sobald man am Anfang bzw. Ende der
+// Kacheln-Liste angekommen ist (nichts mehr in diese Richtung zu wischen).
+function _mhdCarouselSyncArrows() {
+    let track = document.getElementById('mhd-carousel-track');
+    let leftBtn = document.getElementById('mhd-carousel-arrow-left');
+    let rightBtn = document.getElementById('mhd-carousel-arrow-right');
+    if (!track || !leftBtn || !rightBtn) return;
+    let atStart = track.scrollLeft <= 4;
+    let atEnd = track.scrollLeft >= track.scrollWidth - track.clientWidth - 4;
+    leftBtn.style.opacity = atStart ? '0.25' : '1';
+    leftBtn.style.pointerEvents = atStart ? 'none' : 'auto';
+    rightBtn.style.opacity = atEnd ? '0.25' : '1';
+    rightBtn.style.pointerEvents = atEnd ? 'none' : 'auto';
 }
 
 function openCustomItem() {
@@ -6312,7 +6534,8 @@ function addHistoryEntry(item, reason, qtyOverride) {
         storedAt: item.storedAt !== undefined ? item.storedAt : Date.now(),
         manualDays: item.manualDays !== undefined ? item.manualDays : null,
         openedDays: item.openedDays !== undefined ? item.openedDays : null,
-        opened: !!item.opened
+        opened: !!item.opened,
+        label: item.label || ""
     });
     trimHistory();
 }
@@ -6611,11 +6834,31 @@ function editPantryQty(index) {
     let uid = item.uid;
     let color = getActionBarColor();
     let showQtyFields = qtyMode === "both";
+    let showLabel = pantryLabelsEnabled;
+    let currentLabel = item.label || "";
     // pantry wird nach jedem renderPantry() neu sortiert (nach Restzeit) - die
     // ursprüngliche Array-Position "index" ist danach nicht mehr verlässlich.
     // Deshalb wird das Produkt ab hier immer über seine feste uid wiedergefunden,
     // statt über die (sich verändernde) Position im Array.
     function currentIndex() { return pantry.findIndex(p => p.uid === uid); }
+
+    // Chips zeigen die vom Nutzer dauerhaft gespeicherten Label (siehe
+    // "Labels verwalten" im Settings-Menü) - antippen füllt nur das Textfeld,
+    // erst "OK" übernimmt es tatsächlich am Produkt (analog zu editShoppingItemQty()).
+    let presets = savedPantryLabels.filter(l => l !== currentLabel);
+    let chipsHtml = presets.map(l =>
+        `<button type="button" class="pantry-label-chip" data-label="${escapeHtml(l)}" style="background:rgba(0,0,0,0.06); border:none; border-radius:10px; padding:5px 10px; margin:3px; font-size:11px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace;">${escapeHtml(l)}</button>`
+    ).join("");
+    let labelBlockHtml = showLabel ? `
+        <div style="margin:10px 0 4px 0; text-align:left;">
+            <div style="font-size:11px; letter-spacing:0.5px; text-transform:uppercase; opacity:0.45; margin-bottom:6px; text-align:center;">Notiz / Label</div>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <input id="pantryLabelInput" type="text" placeholder="z.B. Anton, gemeinsam..." value="${escapeHtml(currentLabel)}" style="flex:1; box-sizing:border-box; border-radius:8px; border:1px solid #ccc; padding:7px 9px; font-size:13px; font-family:'Lucida Console','Courier New',monospace; text-align:center;">
+                <button id="pantryLabelSave" type="button" title="dauerhaft als Vorschlag merken" style="background:none; border:1px solid #ccc; border-radius:8px; width:34px; height:32px; padding:0; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><img src="data:image/png;base64,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" style="width:16px; height:16px;"></button>
+            </div>
+            ${presets.length ? `<div style="margin-top:8px; display:flex; flex-wrap:wrap; justify-content:center; max-width:260px;">${chipsHtml}</div>` : ""}
+        </div>` : "";
+
     let overlay = createModal(`
         <div class="custom-modal-box" style="--modal-accent:${color};">
             <div class="custom-modal-message" style="margin-bottom:${showQtyFields ? "4px" : "18px"};">${item.name}</div>
@@ -6633,6 +6876,7 @@ function editPantryQty(index) {
                     <button id="editPantryLifePlus" type="button" style="width:34px; height:34px; border:none; border-radius:10px; background:${color}; color:white; font-size:18px; font-weight:bold; cursor:pointer;">+</button>
                 </div>
             </div>
+            ${labelBlockHtml}
             <div class="modal-btn-row" style="margin-top:16px;">
                 <button id="editPantryQtyCancel" class="modal-btn-wide" title="cancel" style="background:#999;"><img src="data:image/png;base64,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" style="filter:brightness(0) invert(1); object-fit:contain;"></button>
                 <button id="editPantryQtyOk" class="modal-btn-wide" title="save" style="background:${color};"><img src="data:image/png;base64,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" style="filter:brightness(0) invert(1); object-fit:contain;"></button>
@@ -6640,6 +6884,16 @@ function editPantryQty(index) {
         </div>
     `);
     if (showQtyFields) initUnitSwiper("editPantryUnitSelect");
+    if (showLabel) {
+        overlay.querySelectorAll(".pantry-label-chip").forEach(chip => {
+            chip.onclick = function() { document.getElementById("pantryLabelInput").value = chip.dataset.label; };
+        });
+        document.getElementById("pantryLabelSave").onclick = function() {
+            let val = document.getElementById("pantryLabelInput").value.trim();
+            if (!val) { showToast("erst Text eingeben"); return; }
+            if (addSavedPantryLabel(val)) showToast(`„${val}" gemerkt`);
+        };
+    }
 
     function refreshLifeDisplay() {
         let disp = document.getElementById("editPantryLifeDisplay");
@@ -6687,12 +6941,18 @@ function editPantryQty(index) {
             if (newQty) { pantry[idx].qty = newQty; pantry[idx].qtyUnit = newUnit; }
             else { delete pantry[idx].qty; delete pantry[idx].qtyUnit; }
         }
+        if (idx !== -1 && showLabel) {
+            let newLabel = document.getElementById("pantryLabelInput").value.trim();
+            if (newLabel) pantry[idx].label = newLabel;
+            else delete pantry[idx].label;
+        }
         saveCustomData();
         overlay.remove();
         renderPantry();
     };
     document.getElementById("editPantryQtyCancel").onclick = function() { overlay.remove(); };
 }
+
 
 // 4. Feld (per "||" angehängt) ist optional: Notiz/Label wie "Lidl" oder
 // "heute noch einkaufen" - nur befüllt, wenn die Einkaufslisten-Notizen in
@@ -7155,6 +7415,38 @@ function _stripHyphenVariantPrefix(name) {
     return parts.length > 1 ? parts[parts.length - 1].trim() : name;
 }
 
+// Bekannte, produktidentitäts-NEUTRALE Adjektiv-Vorsilben, die als zusammen-
+// geschriebenes Kompositum vor einer Grundzutat auftreten können (z.B.
+// "Naturjoghurt" -> "Joghurt", "Vollmilch" -> "Milch", "Biozwiebeln" ->
+// "Zwiebeln") und beim Rezept-Bestandsabgleich ignoriert werden dürfen, weil
+// sie NUR eine Eigenschaft (Fettgehalt, Reifegrad, Bio-Siegel, Frischezustand)
+// beschreiben, nicht ein anderes Produkt.
+// WICHTIG - bewusst NICHT in dieser Liste: Vorsilben, die tatsächlich ein
+// eigenständiges Produkt mit anderem Geschmack/anderer Verwendung erzeugen
+// (z.B. "frühling" in "Frühlingszwiebeln", "cherry" in "Cherrytomate", "sauer"
+// in "Saure Gurke") - diese sollen weiterhin als eigene Zutat gelten (siehe
+// Kommentar bei catalogNamesMatch()/getPantryStockForIngredient()). Im Zweifel
+// gehört eine Vorsilbe NICHT in diese Liste.
+const RECIPE_MATCH_VARIANT_PREFIXES = [
+    "natur", "bio", "öko", "oeko", "voll", "mager", "fettarm", "fettreduziert",
+    "teilentrahmt", "entrahmt", "frisch", "roh", "gekocht", "tiefkühl", "tiefgekühlt", "tk"
+];
+
+// Entfernt - falls vorhanden - genau eine der obigen Vorsilben vom Anfang eines
+// (zusammengeschriebenen) Namens, z.B. "naturjoghurt" -> "joghurt". Läuft nur,
+// wenn danach noch ein sinnvoll langer Rest übrig bleibt (min. 3 Zeichen),
+// damit kurze Namen nicht komplett wegoperiert werden (z.B. "Bio-Ei" -> "ei"
+// ist noch ok, aber ein 2-Buchstaben-Rest wäre zu unspezifisch).
+function _stripKnownVariantPrefix(name) {
+    let n = (name || "").trim().toLowerCase();
+    for (let prefix of RECIPE_MATCH_VARIANT_PREFIXES) {
+        if (n.startsWith(prefix) && n.length - prefix.length >= 3) {
+            return n.slice(prefix.length);
+        }
+    }
+    return n;
+}
+
 // ── Robuster Speisekammer-Abgleich für Rezept-Zutaten ──
 // Nutzt denselben stamm-basierten Vergleich wie catalogNamesMatch() beim
 // Sortiments-Abgleich (Singular/Plural wie "Tomate"/"Tomaten" gilt als
@@ -7176,7 +7468,12 @@ function getPantryStockForIngredient(ingName) {
     return pantry.filter(p => {
         if (!p.name) return false;
         let n = p.name.trim().toLowerCase();
-        return catalogNamesMatch(n, key) || catalogNamesMatch(_stripHyphenVariantPrefix(n), _stripHyphenVariantPrefix(key));
+        return catalogNamesMatch(n, key)
+            || catalogNamesMatch(_stripHyphenVariantPrefix(n), _stripHyphenVariantPrefix(key))
+            // Zusätzlich zusammengeschriebene, produktidentitäts-neutrale Varianten
+            // abgleichen (z.B. Speisekammer "Naturjoghurt" <-> KI-Zutat "Joghurt",
+            // oder umgekehrt) - siehe RECIPE_MATCH_VARIANT_PREFIXES weiter oben.
+            || catalogNamesMatch(_stripKnownVariantPrefix(n), _stripKnownVariantPrefix(key));
     });
 }
 
@@ -7274,11 +7571,15 @@ function buildRecipesListHtml() {
             let iconHtml = r.image
                 ? `<div style="width:40px; height:40px; border-radius:50%; overflow:hidden; flex-shrink:0; box-shadow:0 2px 6px rgba(0,0,0,0.12);"><img src="${imgSrcFor(r.image)}" data-photo-id="${photoRefId(r.image)}" style="width:100%; height:100%; object-fit:cover;"></div>`
                 : `<div style="width:40px; height:40px; border-radius:50%; background:${color}; display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 2px 6px rgba(0,0,0,0.12);"><img src="data:image/png;base64,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" style="width:20px; height:20px; opacity:0.9; filter:brightness(0) invert(1);"></div>`;
-            // Minimalistische Nährwert-Zeile unter dem Namen (z.B. "310 kcal · 22 g Protein"),
-            // pro Portion (unabhängig von der oben eingestellten Portionszahl, analog zu
-            // perPortionValue() in der Rezeptdetailansicht) - nur die Werte, die per
-            // Zahnrad-Button ausgewählt wurden (siehe nutritionOverviewFields), und nur
-            // wenn für dieses Rezept überhaupt Nährwerte hinterlegt sind.
+            // Minimalistische Nährwert-Anzeige unter dem Namen: eine Zeile pro
+            // ausgewähltem Wert (mit vollem Namen statt kryptischer Abkürzungen wie
+            // "KH"/"Kcal" - bei nur bis zu 4 möglichen Zeilen bleibt das trotzdem
+            // übersichtlich), pro Portion (unabhängig von der oben eingestellten
+            // Portionszahl, analog zu perPortionValue() in der Rezeptdetailansicht).
+            // Werte werden ganzzahlig gerundet, da es hier nur um einen schnellen
+            // Überblick geht, nicht um Präzision. Nur die Felder, die per
+            // Zahnrad-Button ausgewählt wurden (siehe nutritionOverviewFields), und
+            // nur wenn für dieses Rezept überhaupt Nährwerte hinterlegt sind.
             let nutritionLine = "";
             if (nutritionEnabled && nutritionOverviewFields.length && r.nutrition) {
                 let base = r.servings || 4;
@@ -7287,10 +7588,10 @@ function buildRecipesListHtml() {
                     .map(f => {
                         let raw = parseFloat(r.nutrition[f.key]);
                         if (r.nutrition[f.key] === undefined || r.nutrition[f.key] === "" || isNaN(raw)) return null;
-                        return `${formatQty(raw / base)} ${f.unit}`;
+                        return `<div>${f.label}: ${Math.round(raw / base)} ${f.unit}/p</div>`;
                     })
                     .filter(Boolean);
-                if (parts.length) nutritionLine = `<div style="font-size:10.5px; opacity:0.5; font-weight:400; margin-top:2px;">${parts.join(" · ")}</div>`;
+                if (parts.length) nutritionLine = `<div style="font-size:10.5px; opacity:0.5; font-weight:400; margin-top:3px; line-height:1.5;">${parts.join("")}</div>`;
             }
             return `
             <div onclick="openRecipeDetail(${i})" style="background:${cardBg}; border-radius:16px; padding:14px 16px; margin-bottom:10px; box-shadow:${cardShadow}; display:flex; align-items:center; gap:12px; cursor:pointer; transition:transform 0.15s, box-shadow 0.15s;"
@@ -7434,6 +7735,7 @@ function restoreHistoryEntryToPantry(index) {
     if (entry.opened) pantryEntry.opened = true;
     if (entry.openedDays !== null && entry.openedDays !== undefined) pantryEntry.openedDays = entry.openedDays;
     if (entry.qty) { pantryEntry.qty = entry.qty; pantryEntry.qtyUnit = entry.qtyUnit || ""; }
+    if (entry.label) pantryEntry.label = entry.label;
     pantry.push(pantryEntry);
     history.splice(index, 1);
     saveCustomData();
@@ -8935,7 +9237,7 @@ function collectSyncPayload() {
         customOpenable, customOpenedDaysOverride, customOpenedShelfLifeDays, customSpoilageInfo,
         pantry: pantry.map(stripCatalogImageForSync),
         history: history.map(stripCatalogImageForSync), historyPageEnabled, statsEnabled, nutritionEnabled, nutritionOverviewFields, historyStats, historyStatsResetAt, productStats,
-        hiddenProducts, shoppingList, shoppingListChecked, qtyMode, shoppingLabelsEnabled, savedShoppingLabels, recipes,
+        hiddenProducts, shoppingList, shoppingListChecked, qtyMode, shoppingLabelsEnabled, savedShoppingLabels, pantryLabelsEnabled, savedPantryLabels, recipes,
         shoppingCategorySortEnabled, shoppingCategoryOrder,
         groupName: syncGroupName || "",
         updatedAt: Date.now()
@@ -8988,6 +9290,8 @@ function applyRemotePayload(data) {
         if (data.qtyMode) qtyMode = data.qtyMode;
         if (typeof data.shoppingLabelsEnabled === "boolean") shoppingLabelsEnabled = data.shoppingLabelsEnabled;
         if (Array.isArray(data.savedShoppingLabels)) savedShoppingLabels = data.savedShoppingLabels;
+        if (typeof data.pantryLabelsEnabled === "boolean") pantryLabelsEnabled = data.pantryLabelsEnabled;
+        if (Array.isArray(data.savedPantryLabels)) savedPantryLabels = data.savedPantryLabels;
         applyShoppingCategorySortSettings(data);
         if (data.recipes) recipes = data.recipes;
         // Gruppennamen übernehmen (auch leeren String, falls er auf einem anderen
