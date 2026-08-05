@@ -11690,18 +11690,42 @@ function openQrScanner() {
         display:flex; flex-direction:column; align-items:center; justify-content:center;
         font-family:'Lucida Console','Courier New',monospace;
     `;
+    // Zusätzlich zum Live-Video-Versuch (getUserMedia) gibt es von Anfang an
+    // einen Foto-Button als Alternative: als "Zum Homescreen hinzufügen"
+    // installierte Web-App auf iOS (Standalone-Modus) lässt getUserMedia()
+    // sich bei manchen iOS-Versionen bekanntermaßen weder auflösen noch
+    // fehlschlagen - das Video bleibt dann für immer schwarz, ganz ohne
+    // Fehlermeldung. Der Foto-Weg nutzt stattdessen denselben Mechanismus wie
+    // "Foto erkennen" (natives Kamera-Sheet über <input type="file"
+    // capture="environment">), der auch im Standalone-Modus zuverlässig
+    // funktioniert - der QR-Code wird dann einmalig aus dem aufgenommenen
+    // Bild dekodiert statt aus einem Live-Stream.
     overlay.innerHTML = `
         <video id="qrScannerVideo" style="width:88%; max-width:340px; border-radius:12px; background:#111;" playsinline muted></video>
         <p id="qrScannerHint" style="color:white; font-size:13px; margin:16px 12px; text-align:center;">Halte den QR-Code vor die Kamera</p>
+        <button onclick="document.getElementById('qrPhotoInput').click()" style="background:none; border:1px solid #fff; color:#fff; border-radius:10px; padding:8px 18px; cursor:pointer; font-family:inherit; margin-bottom:10px;">Stattdessen Foto aufnehmen</button>
+        <input type="file" id="qrPhotoInput" accept="image/*" capture="environment" style="display:none;" onchange="handleQrPhotoCapture(this)">
         <button onclick="closeQrScanner()" style="background:none; border:1px solid #fff; color:#fff; border-radius:10px; padding:8px 18px; cursor:pointer; font-family:inherit;">Abbrechen</button>
     `;
     document.body.appendChild(overlay);
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         let hint = document.getElementById("qrScannerHint");
-        if (hint) hint.textContent = "Kamera-Zugriff wird von diesem Browser nicht unterstützt.";
+        if (hint) hint.textContent = 'Live-Kamerabild wird von diesem Browser nicht unterstützt - bitte "Stattdessen Foto aufnehmen" nutzen.';
         return;
     }
+
+    // Erkennt genau den oben beschriebenen Fall: getUserMedia() hängt fest,
+    // ohne aufzulösen oder fehlzuschlagen. Kommt nach ein paar Sekunden kein
+    // Frame an, wird der Hinweistext angepasst, damit klar ist, dass der
+    // Foto-Button die zuverlässigere Option ist - der Live-Versuch läuft im
+    // Hintergrund trotzdem weiter, falls er doch noch anspringt.
+    let gotFrame = false;
+    let stuckTimer = setTimeout(() => {
+        if (gotFrame) return;
+        let hint = document.getElementById("qrScannerHint");
+        if (hint) hint.textContent = 'Live-Kamerabild reagiert nicht (bekannte Einschränkung bei installierten Web-Apps auf iOS) - bitte "Stattdessen Foto aufnehmen" nutzen.';
+    }, 3500);
 
     navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
         .then(stream => {
@@ -11722,6 +11746,12 @@ function openQrScanner() {
             function tick() {
                 if (!document.getElementById("qrScannerOverlay")) return; // Scanner wurde geschlossen
                 if (video.readyState === video.HAVE_ENOUGH_DATA && typeof jsQR !== "undefined") {
+                    if (!gotFrame) {
+                        gotFrame = true;
+                        clearTimeout(stuckTimer);
+                        let hint = document.getElementById("qrScannerHint");
+                        if (hint) hint.textContent = "Halte den QR-Code vor die Kamera";
+                    }
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -11739,9 +11769,46 @@ function openQrScanner() {
         })
         .catch(e => {
             console.warn("Kamera konnte nicht geöffnet werden:", e);
+            clearTimeout(stuckTimer);
             let hint = document.getElementById("qrScannerHint");
-            if (hint) hint.textContent = "Kamera-Zugriff nicht möglich (Berechtigung verweigert oder keine Kamera vorhanden).";
+            if (hint) hint.textContent = 'Live-Kamerabild nicht möglich (Berechtigung verweigert oder keine Kamera vorhanden) - bitte "Stattdessen Foto aufnehmen" nutzen.';
         });
+}
+
+// Fallback für den Fall, dass das Live-Kamerabild (getUserMedia) nicht
+// funktioniert (siehe openQrScanner()-Kommentar, v.a. iOS-Homescreen-Web-App):
+// nimmt EIN Foto über die native Kamera-App auf (wie beim "Foto erkennen"-
+// Feature) und dekodiert den QR-Code einmalig daraus, statt aus einem
+// Live-Stream.
+function handleQrPhotoCapture(inputEl) {
+    let file = inputEl.files && inputEl.files[0];
+    inputEl.value = ""; // erlaubt erneutes Auswählen derselben Datei bei einem zweiten Versuch
+    if (!file) return;
+    let hint = document.getElementById("qrScannerHint");
+    if (hint) hint.textContent = "Foto wird ausgewertet...";
+    let img = new Image();
+    img.onload = () => {
+        URL.revokeObjectURL(img.src);
+        if (typeof jsQR === "undefined") {
+            if (hint) hint.textContent = "QR-Erkennung konnte nicht geladen werden (kein Internet?).";
+            return;
+        }
+        let canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        let ctx = canvas.getContext("2d", { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0);
+        let imageData;
+        try { imageData = ctx.getImageData(0, 0, canvas.width, canvas.height); } catch (e) { imageData = null; }
+        let code = imageData && jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
+        if (code && code.data) {
+            handleScannedQrData(code.data);
+        } else if (hint) {
+            hint.textContent = "Kein QR-Code im Foto erkannt - bitte näher ran/gerader halten und nochmal versuchen.";
+        }
+    };
+    img.onerror = () => { if (hint) hint.textContent = "Foto konnte nicht gelesen werden."; };
+    img.src = URL.createObjectURL(file);
 }
 
 function closeQrScanner() {
