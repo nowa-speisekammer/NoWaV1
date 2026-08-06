@@ -1520,6 +1520,17 @@ input[type="number"]::-webkit-inner-spin-button {
         height: 109.1px !important;
     }
 
+    /* Ohne eigenes Bild wird statt <img> der schattierte Platzhalter
+       (.no-image-placeholder-rect) angezeigt - der hatte hier bisher KEINE
+       eigene Regel und blieb dadurch bei seiner vollen Desktop-Höhe (150px,
+       siehe Basis-Regel weiter oben), während die Kachel drumrum schon auf
+       160px Breite geschrumpft war und echte Bilder korrekt auf 109.1px
+       Höhe mitskaliert wurden - dadurch wirkten Kacheln ohne Bild auf dem
+       Handy sichtbar größer/anders proportioniert als die mit Bild. */
+    .product[style*="width:220px"] .no-image-placeholder-rect {
+        height: 109.1px !important;
+    }
+
     /* Geschlossen/Geöffnet-Stepperpaare (Sortiment erweitern/bearbeiten) verkleinern,
        damit auf dem Handy beide Spalten pro Lagerort nebeneinander statt
        untereinander (durch flex-wrap) dargestellt werden. */
