@@ -340,6 +340,18 @@ body {
 .ai-recipe-loading-dot:nth-child(2) { animation-delay: 0.15s; }
 .ai-recipe-loading-dot:nth-child(3) { animation-delay: 0.3s; }
 
+/* Generische, wiederverwendbare Ladeanimation fuer beliebige KI-Buttons
+   (Text+Icon-Kombis, bei denen ein rotierendes Icon nicht passt) - sanftes
+   Pulsieren der Deckkraft, solange eine KI-Anfrage laeuft. */
+@keyframes aiBtnPulse {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+}
+.ai-btn-loading {
+    animation: aiBtnPulse 1s ease-in-out infinite;
+    cursor: wait !important;
+}
+
 .circle-container svg {
     position: absolute;
     top: 0;
@@ -1881,6 +1893,13 @@ let aiRecipeChatHistory = [];
 let aiRecipeSuggestions = [];
 let aiRecipeLoading = false;
 let aiRecipeError = "";
+// Wird bei jedem fetchAiRecipeIdeas()-Aufruf hochgezählt. So lässt sich am Ende
+// erkennen, ob zwischenzeitlich (waehrend die Anfrage noch lief) bereits eine
+// neuere Anfrage gestartet wurde - dann darf das aeltere, inzwischen ueberholte
+// Ergebnis nicht mehr angewendet werden ("last request wins"). Zusammen mit dem
+// DOM-Marker-Check (siehe fetchAiRecipeIdeas) verhindert das, dass ploetzlich
+// Ergebnisse aufploppen, wenn man die Seite laengst verlassen hat.
+let aiRecipeRequestToken = 0;
 let aiRecipeLastWish = "";   // letzter Wunsch-Text, fuer Retry nach Modellwechsel
 // UIDs der in der "Pflichtzutaten"-Auswahl (siehe renderAiRecipeIngredientPicker())
 // angetippten Speisekammer-Produkte. Diese Zutaten MÜSSEN laut Prompt in jedem
@@ -5172,6 +5191,7 @@ function renderAiRecipeIdeasPage() {
     }).join("");
 
     document.getElementById("app").innerHTML = `
+        <div id="aiRecipeIdeasPageRoot">
         <h1 style="display:flex; align-items:center; justify-content:center; gap:10px;"><img src="data:image/png;base64,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" style="width:26px; height:26px; vertical-align:middle;"> KI-Rezeptideen</h1>
         <p class="sub" style="max-width:340px; margin:0 auto 14px;">Basierend auf Speisekammer <br> Bald ablaufende Produkte bevorzugt</p>
         <div style="max-width:400px; margin:0 auto; padding:0 14px;">
@@ -5196,6 +5216,7 @@ function renderAiRecipeIdeasPage() {
 
             <button onclick="openRecipes()" style="width:100%; background:none; border:none; color:#888; padding:14px 0 4px; cursor:pointer; font-family:inherit; font-size:13px;">← zurück zu recipes</button>
         </div>
+        </div>
     `;
 }
 
@@ -5203,6 +5224,7 @@ function renderAiRecipeIdeasPage() {
 // sonst ein zusätzlicher Wunsch im laufenden "Chat" (Kontext bleibt erhalten).
 async function fetchAiRecipeIdeas(userWish) {
     let apiKey = getGeminiApiKey();
+    let myRequestToken = ++aiRecipeRequestToken;
     aiRecipeLastWish = userWish || "";
     let promptText;
     if (!aiRecipeChatHistory.length) {
@@ -5306,6 +5328,17 @@ usedIngredients: NUR Namen, die exakt (oder eindeutig erkennbar) in der obigen S
         console.error("KI-Rezeptideen fehlgeschlagen:", e);
         aiRecipeError = (e && e.message) ? e.message : "Rezeptideen konnten nicht geholt werden";
     }
+
+    // Abbrechen, falls in der Zwischenzeit entweder schon eine neuere Anfrage
+    // gestartet wurde (myRequestToken ist dann nicht mehr aktuell) ODER die
+    // Rezeptideen-Seite gar nicht mehr angezeigt wird (Marker fehlt, siehe
+    // renderAiRecipeIdeasPage) - z.B. weil man währenddessen zu einer anderen
+    // Seite gewechselt ist. In beiden Fällen darf das Ergebnis NICHT mehr
+    // angewendet/angezeigt werden.
+    if (myRequestToken !== aiRecipeRequestToken || !document.getElementById("aiRecipeIdeasPageRoot")) {
+        return;
+    }
+
     aiRecipeLoading = false;
     renderAiRecipeIdeasPage();
     if (aiRecipeError) showModelSwitchPrompt(() => fetchAiRecipeIdeas(aiRecipeLastWish));
@@ -5913,7 +5946,7 @@ async function estimateAiRowShelfLifeCombined(id) {
 
     let apiKey = getGeminiApiKey();
     let btn = document.getElementById("aiRowEstimateBtnCombined" + id);
-    if (btn) { btn.disabled = true; btn.style.opacity = "0.5"; }
+    if (btn) { btn.disabled = true; btn.style.opacity = "0.5"; btn.classList.add("ai-btn-loading"); }
 
     let prompt = `Du bist ein Lebensmittel-Experte für eine Vorrats-App. Für "${name}" (naheliegendste, alltägliche Standardbedeutung, normale Frische zum Kaufzeitpunkt, im Kühlschrank gelagert) sollst du ZWEI unabhängige Zustände beurteilen:
 
@@ -5996,7 +6029,7 @@ Gib für jede der beiden Achsen an, ob sie zutrifft (applicable) und falls ja, r
     } catch (e) {
         showToast("Prüfung fehlgeschlagen: " + ((e && e.message) || "unbekannter Fehler"));
     } finally {
-        if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
+        if (btn) { btn.disabled = false; btn.style.opacity = "1"; btn.classList.remove("ai-btn-loading"); }
     }
 }
 
@@ -7274,7 +7307,7 @@ async function estimateShelfLifeWithAI() {
     let apiKey = getGeminiApiKey();
     let btn = document.getElementById("aiShelfLifeBtn");
     let btnLabel = document.getElementById("aiShelfLifeBtnLabel");
-    if (btn) btn.disabled = true;
+    if (btn) { btn.disabled = true; btn.classList.add("ai-btn-loading"); }
     if (btnLabel) btnLabel.textContent = `frage ${ESTIMATE_RUNS}x KI ab...`;
 
     // "auch anschneidbar"-Haken: steuert, ob die KI zusätzlich zur normalen
@@ -7815,17 +7848,37 @@ Lass Punkte, die für "${name}" trivial/allgemein bekannt sind (z.B. "Tiefkühlp
 
             let note = ok.length < attemptedTotal ? ` (nur ${ok.length}/${attemptedTotal} Läufe erfolgreich)` : "";
 
-            // Plausibilitäts-Check: erst NACHDEM alle Lagerorte feststehen, wird
-            // in einem zweiten KI-Aufruf geprüft, ob die Werte im Vergleich
-            // zueinander für dieses konkrete Produkt Sinn ergeben (siehe
-            // crossCheckPlausibility oben). Erst wenn dieser Check nichts
-            // beanstandet, gilt die reine Streuungs-Konfidenz ("high") auch
-            // wirklich als bestätigt - bei einem Widerspruch wird das betroffene
-            // Feld unabhängig von der Streuung zusätzlich rot markiert.
-            if (filledAny && Object.keys(finalValues).length > 1) {
-                if (btnLabel) btnLabel.textContent = "prüfe Plausibilität...";
-                try {
-                    let review = await crossCheckPlausibility(name, finalValues, storageLabel);
+            // Plausibilitäts-Check UND Verderb-Hinweis-Vorschlag hängen beide
+            // NUR von den bereits feststehenden finalValues ab, nicht vonein-
+            // ander - sie liefen bisher nacheinander (erst crossCheckPlausibility
+            // abwarten, DANN erst generateSpoilageHint starten), was einen
+            // kompletten Netzwerk-Umlauf unnötig verdoppelt hat. Beide jetzt
+            // gleichzeitig starten (Promise.all) spart genau diese Wartezeit,
+            // OHNE an Prompt, Modell oder Ergebnis irgendetwas zu ändern - exakt
+            // dieselben zwei Anfragen, nur nicht mehr künstlich hintereinander.
+            if (filledAny) {
+                let needsCrossCheck = Object.keys(finalValues).length > 1;
+                if (btnLabel) btnLabel.textContent = needsCrossCheck ? "prüfe Plausibilität & Verderb-Hinweis..." : "erstelle Verderb-Hinweis...";
+
+                let crossCheckPromise = needsCrossCheck
+                    ? crossCheckPlausibility(name, finalValues, storageLabel).catch(e => {
+                        // Der Cross-Check ist eine Zusatzabsicherung, kein Kernbestandteil -
+                        // schlägt er fehl, bleiben die regulär geschätzten Werte trotzdem
+                        // stehen, nur eben ohne die zusätzliche Plausibilitätsmarkierung.
+                        console.warn("Plausibilitäts-Check fehlgeschlagen:", e);
+                        return null;
+                    })
+                    : Promise.resolve(null);
+                let spoilagePromise = generateSpoilageHint(name, finalValues, storageLabel).catch(e => {
+                    // Auch das ist eine Zusatzfunktion - schlägt sie fehl, bleiben die
+                    // Haltbarkeitswerte trotzdem gültig, nur ohne Textvorschlag.
+                    console.warn("Verderb-Hinweis-Vorschlag fehlgeschlagen:", e);
+                    return null;
+                });
+
+                let [review, hintResult] = await Promise.all([crossCheckPromise, spoilagePromise]);
+
+                if (review) {
                     let anyFlag = false;
                     Object.keys(fieldRefs).forEach(storage => {
                         let fieldReview = (review.fields || {})[storage];
@@ -7843,47 +7896,28 @@ Lass Punkte, die für "${name}" trivial/allgemein bekannt sind (z.B. "Tiefkühlp
                         }
                     });
                     if (anyFlag) note += " - Plausibilitäts-Check hat Auffälligkeiten markiert, bitte prüfen";
-                } catch (e) {
-                    // Der Cross-Check ist eine Zusatzabsicherung, kein Kernbestandteil -
-                    // schlägt er fehl, bleiben die regulär geschätzten Werte trotzdem
-                    // stehen, nur eben ohne die zusätzliche Plausibilitätsmarkierung.
-                    console.warn("Plausibilitäts-Check fehlgeschlagen:", e);
                 }
-            }
 
-            // Verderb-Hinweis-Vorschlag: NACH den Zahlen, da er die bereits fest-
-            // stehenden Lagerzeiten als Kontext braucht. Trägt nur ein, wenn das
-            // Feld noch leer ist - ein bereits vom Nutzer selbst geschriebener
-            // Verderb-Hinweis wird nie überschrieben, nur ergänzend im Toast erwähnt.
-            if (filledAny) {
-                if (btnLabel) btnLabel.textContent = "erstelle Verderb-Hinweis...";
-                try {
-                    let hintResult = await generateSpoilageHint(name, finalValues, storageLabel);
-                    if (hintResult && hintResult.hasRelevantHint && hintResult.hint && hintResult.hint.trim()) {
-                        let spoilageTextEl = document.getElementById("spoilage-text-input");
-                        let alreadyHasText = !!(window.spoilageTextDraft && window.spoilageTextDraft.trim());
-                        if (!alreadyHasText) {
-                            window.spoilageTextDraft = hintResult.hint.trim();
-                            window.spoilageHintIsAiGenerated = true;
-                            window.spoilageHintForName = name;
-                            if (spoilageTextEl) spoilageTextEl.value = window.spoilageTextDraft;
-                            // Verderb-Hinweis-Box automatisch aufklappen, damit der neue
-                            // Vorschlag auch sichtbar ist statt versteckt hinter dem Toggle.
-                            let box = document.getElementById("spoilage-info-box");
-                            if (box) box.style.display = "block";
-                            let toggleBtnLbl = document.querySelector(".sp-lbl");
-                            let toggleBtnChev = document.querySelector(".sp-chev");
-                            if (toggleBtnLbl) toggleBtnLbl.textContent = "Verderb-Hinweis verbergen";
-                            if (toggleBtnChev) toggleBtnChev.textContent = "▴";
-                            note += " + Verderb-Hinweis vorgeschlagen";
-                        } else {
-                            note += " (Verderb-Hinweis-Vorschlag verworfen, Feld bereits ausgefüllt)";
-                        }
+                if (hintResult && hintResult.hasRelevantHint && hintResult.hint && hintResult.hint.trim()) {
+                    let spoilageTextEl = document.getElementById("spoilage-text-input");
+                    let alreadyHasText = !!(window.spoilageTextDraft && window.spoilageTextDraft.trim());
+                    if (!alreadyHasText) {
+                        window.spoilageTextDraft = hintResult.hint.trim();
+                        window.spoilageHintIsAiGenerated = true;
+                        window.spoilageHintForName = name;
+                        if (spoilageTextEl) spoilageTextEl.value = window.spoilageTextDraft;
+                        // Verderb-Hinweis-Box automatisch aufklappen, damit der neue
+                        // Vorschlag auch sichtbar ist statt versteckt hinter dem Toggle.
+                        let box = document.getElementById("spoilage-info-box");
+                        if (box) box.style.display = "block";
+                        let toggleBtnLbl = document.querySelector(".sp-lbl");
+                        let toggleBtnChev = document.querySelector(".sp-chev");
+                        if (toggleBtnLbl) toggleBtnLbl.textContent = "Verderb-Hinweis verbergen";
+                        if (toggleBtnChev) toggleBtnChev.textContent = "▴";
+                        note += " + Verderb-Hinweis vorgeschlagen";
+                    } else {
+                        note += " (Verderb-Hinweis-Vorschlag verworfen, Feld bereits ausgefüllt)";
                     }
-                } catch (e) {
-                    // Auch das ist eine Zusatzfunktion - schlägt sie fehl, bleiben die
-                    // Haltbarkeitswerte trotzdem gültig, nur ohne Textvorschlag.
-                    console.warn("Verderb-Hinweis-Vorschlag fehlgeschlagen:", e);
                 }
             }
 
@@ -7895,7 +7929,7 @@ Lass Punkte, die für "${name}" trivial/allgemein bekannt sind (z.B. "Tiefkühlp
         showModelSwitchPrompt(() => estimateShelfLifeWithAI());
     }
 
-    if (btn) btn.disabled = false;
+    if (btn) { btn.disabled = false; btn.classList.remove("ai-btn-loading"); }
     if (btnLabel) btnLabel.textContent = "KI Schätzung";
 }
 
@@ -8970,12 +9004,24 @@ function toggleShoppingChecked(index) {
     // muss der Haken hier zusätzlich von Hand synchronisiert werden - sonst
     // zeigt die Box den alten Zustand, obwohl Durchstreichung/Zähler schon
     // umgeschaltet sind.
-    let boxes = document.querySelectorAll(".shop-checkbox");
-    if (boxes[index]) boxes[index].checked = shoppingListChecked[index];
-    let spans = document.querySelectorAll(".shopping-item-label");
-    if (spans[index]) {
-        spans[index].style.textDecoration = shoppingListChecked[index] ? "line-through" : "";
-        spans[index].style.color = shoppingListChecked[index] ? "rgba(255,255,255,0.6)" : "white";
+    //
+    // WICHTIG: NICHT per Positions-Index in querySelectorAll(".shop-checkbox")
+    // suchen - das liefert Elemente in DOM-/Render-Reihenfolge, die bei
+    // aktiver Kategorie-Sortierung (shoppingCategorySortEnabled) von der
+    // Reihenfolge im shoppingList[]-Array abweicht (orderedIndices != index).
+    // Dadurch wurde bisher teils ein ganz anderes Item in der Liste visuell
+    // mit-abgehakt, obwohl im Datenmodell nur das richtige verändert wurde.
+    // Stattdessen gezielt über das data-index-Attribut der jeweiligen Zeile
+    // gehen (siehe data-index="${index}" in buildShoppingItemRowHtml).
+    let tile = document.querySelector(`.shopping-item[data-index="${index}"]`);
+    if (tile) {
+        let box = tile.querySelector(".shop-checkbox");
+        if (box) box.checked = shoppingListChecked[index];
+        let span = tile.querySelector(".shopping-item-label");
+        if (span) {
+            span.style.textDecoration = shoppingListChecked[index] ? "line-through" : "";
+            span.style.color = shoppingListChecked[index] ? "rgba(255,255,255,0.6)" : "white";
+        }
     }
     // "abgehakte übernehmen"-Button ein-/ausblenden, ohne die ganze Liste neu zu
     // rendern (würde sonst Scroll-Position/Animation der Checkbox stören).
@@ -9923,7 +9969,7 @@ async function runNutritionAiEstimation() {
     let apiKey = getGeminiApiKey();
     let btn = document.getElementById("aiNutritionBtn");
     let btnLabel = document.getElementById("aiNutritionBtnLabel");
-    if (btn) btn.disabled = true;
+    if (btn) { btn.disabled = true; btn.classList.add("ai-btn-loading"); }
     if (btnLabel) btnLabel.textContent = `frage ${ESTIMATE_RUNS}x KI ab...`;
 
     let servings = window.recipeServingsDraft || 4;
@@ -10005,7 +10051,7 @@ async function runNutritionAiEstimation() {
             filledAny = true;
         });
         showToast(filledAny ? "Nährwerte direkt aus deinen Angaben berechnet - alle Zutaten waren bereits vollständig" : "Keine gültigen Zutaten gefunden");
-        if (btn) btn.disabled = false;
+        if (btn) { btn.disabled = false; btn.classList.remove("ai-btn-loading"); }
         if (btnLabel) btnLabel.textContent = "KI Schätzung";
         return;
     }
@@ -10158,7 +10204,7 @@ Wo "Nährwerte pro 100g" angefordert sind: gib die jeweiligen Werte pro 100g DIE
         showModelSwitchPrompt(() => runNutritionAiEstimation());
     }
 
-    if (btn) btn.disabled = false;
+    if (btn) { btn.disabled = false; btn.classList.remove("ai-btn-loading"); }
     if (btnLabel) btnLabel.textContent = "KI Schätzung";
 }
 
