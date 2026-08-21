@@ -5313,18 +5313,7 @@ async function handleAiCamCapture(input) {
 // Sucher-Rahmen, Farb-Akzent wie überall sonst, Lucida-Console-Schrift).
 async function openAiLiveScanner() {
     if (!getGeminiApiKey()) { openGeminiKeyPrompt(() => openAiLiveScanner()); return; }
-    if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
-        showToast("⚠️ Kamera-Zugriff wird von diesem Browser nicht unterstützt");
-        return;
-    }
-    let stream;
-    try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
-    } catch (e) {
-        showToast("⚠️ Kein Kamera-Zugriff (Berechtigung erteilt?)");
-        return;
-    }
-    aiLiveScanStream = stream;
+    aiLiveScanStream = null;
     aiLiveScanItems = [];
     aiLiveScanBusy = false;
     let color = getActionBarColor();
@@ -5332,6 +5321,16 @@ async function openAiLiveScanner() {
     let overlay = document.createElement("div");
     overlay.id = "aiLiveScanOverlay";
     overlay.style.cssText = "position:fixed; inset:0; z-index:10000; background:#000; display:flex; flex-direction:column;";
+    // Zusätzlich zum Live-Video-Versuch (getUserMedia) gibt es von Anfang an
+    // einen Foto-Button als Alternative (exakt derselbe, bewährte Mechanismus
+    // wie beim QR-Scanner, siehe openQrScanner()-Kommentar dort): als "Zum
+    // Homescreen hinzufügen" installierte Web-Apps auf iOS (und manche
+    // file://-Kontexte, wie hier beim lokal per Doppelklick geöffneten
+    // index.html) lassen getUserMedia() teils gar nicht erst starten oder
+    // liefern nie ein erstes Frame - ganz ohne Fehlermeldung. Der Foto-Weg
+    // nutzt stattdessen dasselbe native Kamera-Sheet wie "Foto erkennen"
+    // (<input type="file" capture="environment">), das zuverlässig
+    // funktioniert, und erlaubt trotzdem EIN Foto pro Produkt nacheinander.
     overlay.innerHTML = `
         <video id="aiLiveScanVideo" autoplay playsinline webkit-playsinline="true" muted style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover;"></video>
         <div style="position:absolute; inset:0; background:linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,0) 62%, rgba(0,0,0,0.65) 100%); pointer-events:none;"></div>
@@ -5348,14 +5347,52 @@ async function openAiLiveScanner() {
 
         <div id="aiLiveScanToastRow" style="position:relative; padding:0 16px; display:flex; flex-direction:column; align-items:center; gap:6px; pointer-events:none;"></div>
 
-        <div style="position:relative; padding:10px 16px 30px; box-sizing:border-box; display:flex; flex-direction:column; align-items:center; gap:10px;">
+        <div style="position:relative; padding:10px 16px 26px; box-sizing:border-box; display:flex; flex-direction:column; align-items:center; gap:10px;">
             <div id="aiLiveScanHint" style="font-family:'Lucida Console','Courier New',monospace; font-size:12px; color:rgba(255,255,255,0.9); text-align:center; max-width:280px; line-height:1.4;">Kamera wird gestartet...</div>
             <button id="aiLiveScanShutter" onclick="captureAiLiveScanBurst()" disabled style="width:72px; height:72px; border-radius:50%; background:${color}; border:4px solid white; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 12px rgba(0,0,0,0.4); flex-shrink:0; opacity:0.45; pointer-events:none; transition:opacity 0.2s ease;">
                 <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-2h6l2 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="14" r="3.5"/></svg>
             </button>
+            <button id="aiLiveScanPhotoFallbackBtn" onclick="document.getElementById('aiLiveScanPhotoInput').click()" style="background:none; border:1px solid rgba(255,255,255,0.6); color:white; border-radius:10px; padding:7px 16px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace; font-size:11.5px;">Stattdessen Foto aufnehmen</button>
+            <input type="file" id="aiLiveScanPhotoInput" accept="image/*" capture="environment" style="display:none;" onchange="handleAiLiveScanPhotoCapture(this)">
         </div>
     `;
     document.body.appendChild(overlay);
+
+    if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
+        let hint = document.getElementById("aiLiveScanHint");
+        if (hint) hint.textContent = 'Live-Kamerabild wird von diesem Browser nicht unterstützt - bitte "Stattdessen Foto aufnehmen" nutzen.';
+        return;
+    }
+
+    // Erkennt genau den oben beschriebenen "hängt fest"-Fall: kommt nach ein
+    // paar Sekunden kein erstes Frame an, wird der Hinweistext angepasst,
+    // damit klar ist, dass der Foto-Button die zuverlässigere Option ist -
+    // der Live-Versuch läuft im Hintergrund trotzdem weiter, falls er doch
+    // noch anspringt (siehe loadedmetadata-Listener unten).
+    let gotFrame = false;
+    let stuckTimer = setTimeout(() => {
+        if (gotFrame) return;
+        let hint = document.getElementById("aiLiveScanHint");
+        if (hint) hint.textContent = 'Live-Kamerabild reagiert nicht (bekannte Einschränkung bei installierten Web-Apps/file://-Aufruf) - bitte "Stattdessen Foto aufnehmen" nutzen.';
+    }, 3500);
+
+    let stream;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+    } catch (e) {
+        clearTimeout(stuckTimer);
+        let hint = document.getElementById("aiLiveScanHint");
+        if (hint) hint.textContent = 'Live-Kamerabild nicht möglich (Berechtigung verweigert oder keine Kamera vorhanden) - bitte "Stattdessen Foto aufnehmen" nutzen.';
+        return;
+    }
+    // Falls der Nutzer den Scanner schon wieder geschlossen hat, bevor die
+    // Kamera-Erlaubnis kam: Stream sofort wieder freigeben statt laufen zu lassen.
+    if (!document.getElementById("aiLiveScanOverlay")) {
+        clearTimeout(stuckTimer);
+        stream.getTracks().forEach(t => t.stop());
+        return;
+    }
+    aiLiveScanStream = stream;
 
     let videoEl = document.getElementById("aiLiveScanVideo");
     // Manche mobilen Browser/WebViews starten die Vorschau trotz autoplay-
@@ -5373,13 +5410,16 @@ async function openAiLiveScanner() {
     // captureVideoFrameBase64() sowieso nur einen leeren/schwarzen Frame
     // liefern ("Kein Kamerabild verfügbar").
     videoEl.addEventListener("loadedmetadata", () => {
+        gotFrame = true;
+        clearTimeout(stuckTimer);
         let shutter = document.getElementById("aiLiveScanShutter");
         let hint = document.getElementById("aiLiveScanHint");
         if (shutter) { shutter.disabled = false; shutter.style.opacity = "1"; shutter.style.pointerEvents = "auto"; }
         if (hint) hint.textContent = "Produkt ins Feld halten, langsam drehen (Name, Menge & MHD zeigen) - dann antippen";
     }, { once: true });
     videoEl.addEventListener("error", () => {
-        showToast("⚠️ Kamera-Vorschau konnte nicht gestartet werden");
+        let hint = document.getElementById("aiLiveScanHint");
+        if (hint) hint.textContent = 'Live-Kamerabild nicht möglich - bitte "Stattdessen Foto aufnehmen" nutzen.';
     }, { once: true });
 }
 
@@ -5458,7 +5498,45 @@ async function captureAiLiveScanBurst() {
         if (i < 2) await new Promise(r => setTimeout(r, 450));
     }
 
-    if (hint) hint.textContent = "wird ausgewertet...";
+    await processAiLiveScanFrames(frames, hint);
+    aiLiveScanBusy = false;
+    if (shutter) { shutter.style.opacity = "1"; shutter.style.pointerEvents = "auto"; }
+    if (hint) hint.textContent = originalHint;
+}
+
+// Fallback für den Fall, dass das Live-Kamerabild nicht funktioniert (siehe
+// openAiLiveScanner()-Kommentar) - nimmt EIN Foto über die native Kamera-App
+// auf (wie "Foto erkennen") und wertet es genauso aus wie einen Live-Burst.
+// Kann beliebig oft hintereinander genutzt werden, ein Foto pro Produkt.
+async function handleAiLiveScanPhotoCapture(inputEl) {
+    let file = inputEl.files && inputEl.files[0];
+    inputEl.value = "";
+    if (!file || aiLiveScanBusy) return;
+
+    aiLiveScanBusy = true;
+    let hint = document.getElementById("aiLiveScanHint");
+    let originalHint = hint ? hint.textContent : "";
+    let fallbackBtn = document.getElementById("aiLiveScanPhotoFallbackBtn");
+    if (fallbackBtn) fallbackBtn.style.opacity = "0.5";
+
+    try {
+        let frame = await resizeImageToBase64(file, 1000, 0.8);
+        await processAiLiveScanFrames(frame ? [frame] : [], hint);
+    } catch (e) {
+        console.error("Live-Scan-Foto fehlgeschlagen:", e);
+        showAiLiveScanToast("⚠️ Foto konnte nicht verarbeitet werden", false);
+    } finally {
+        aiLiveScanBusy = false;
+        if (fallbackBtn) fallbackBtn.style.opacity = "1";
+        if (hint) hint.textContent = originalHint;
+    }
+}
+
+// Gemeinsame Auswertung eines Foto-Bursts (egal ob per Live-Video oder per
+// Foto-Fallback entstanden): schickt die Frames an Gemini, hängt bei Erfolg
+// ein neues Produkt an aiLiveScanItems und aktualisiert Zähler/"Fertig"-Button.
+async function processAiLiveScanFrames(frames, hintEl) {
+    if (hintEl) hintEl.textContent = "wird ausgewertet...";
     try {
         if (!frames.length) throw new Error("Kein Kamerabild verfügbar");
         let item = await recognizeSingleProductFromFrames(frames);
@@ -5476,10 +5554,6 @@ async function captureAiLiveScanBurst() {
     } catch (e) {
         console.error("Live-Scan fehlgeschlagen:", e);
         showAiLiveScanToast("⚠️ " + (e && e.message ? e.message : "Erkennung fehlgeschlagen"), false);
-    } finally {
-        aiLiveScanBusy = false;
-        if (shutter) { shutter.style.opacity = "1"; shutter.style.pointerEvents = "auto"; }
-        if (hint) hint.textContent = originalHint;
     }
 }
 
