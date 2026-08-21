@@ -5306,7 +5306,7 @@ async function handleAiCamCapture(input) {
 // und MHD zu sehen waren, dann antippen -> Produkt weglegen -> nächstes.
 // WICHTIG (Tokenkosten): Es wird NICHT laufend jeder Kamera-Frame an Gemini
 // geschickt, sondern nur GENAU EINMAL pro Antippen ein kurzer Foto-Burst
-// (ein paar Frames über ~1s) - macht rotierende Verpackungen aus mehreren
+// (ein paar Frames über ~1.5s) - macht rotierende Verpackungen aus mehreren
 // Blickwinkeln in EINEM Request sichtbar, statt pro Frame extra zu bezahlen.
 
 // Öffnet die Live-Kamera als Vollbild-Overlay im App-Look (abgerundeter
@@ -5348,6 +5348,11 @@ async function openAiLiveScanner() {
         <div id="aiLiveScanToastRow" style="position:relative; padding:0 16px; display:flex; flex-direction:column; align-items:center; gap:6px; pointer-events:none;"></div>
 
         <div style="position:relative; padding:10px 16px 26px; box-sizing:border-box; display:flex; flex-direction:column; align-items:center; gap:10px;">
+            <div id="aiLiveScanResultPanel" style="width:100%; max-width:280px; background:rgba(0,0,0,0.5); border:1.5px solid rgba(255,255,255,0.35); border-radius:12px; padding:8px 14px; font-family:'Lucida Console','Courier New',monospace; font-size:12px; color:white; display:flex; flex-direction:column; gap:4px; box-sizing:border-box;">
+                <div style="display:flex; justify-content:space-between; gap:10px;"><span style="opacity:0.65;">Name</span><span id="aiLiveScanResultName" style="font-weight:bold; text-align:right;">–</span></div>
+                <div style="display:flex; justify-content:space-between; gap:10px;"><span style="opacity:0.65;">Menge</span><span id="aiLiveScanResultMenge" style="font-weight:bold; text-align:right;">–</span></div>
+                <div style="display:flex; justify-content:space-between; gap:10px;"><span style="opacity:0.65;">MHD</span><span id="aiLiveScanResultMhd" style="font-weight:bold; text-align:right;">–</span></div>
+            </div>
             <div id="aiLiveScanHint" style="font-family:'Lucida Console','Courier New',monospace; font-size:12px; color:rgba(255,255,255,0.9); text-align:center; max-width:280px; line-height:1.4;">Kamera wird gestartet...</div>
             <button id="aiLiveScanShutter" onclick="captureAiLiveScanBurst()" disabled style="width:72px; height:72px; border-radius:50%; background:${color}; border:4px solid white; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 12px rgba(0,0,0,0.4); flex-shrink:0; opacity:0.45; pointer-events:none; transition:opacity 0.2s ease;">
                 <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-2h6l2 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="14" r="3.5"/></svg>
@@ -5369,6 +5374,7 @@ async function openAiLiveScanner() {
     if (!window.isSecureContext) {
         let hint = document.getElementById("aiLiveScanHint");
         if (hint) hint.textContent = 'Live-Kamerabild braucht https:// oder http://localhost - über file:// blockieren Browser das grundsätzlich. Bitte "Stattdessen Foto aufnehmen" nutzen (funktioniert auch so).';
+        emphasizeAiLiveScanFallbackButton();
         return;
     }
 
@@ -5387,6 +5393,7 @@ async function openAiLiveScanner() {
     if (window.navigator.standalone === true) {
         let hint = document.getElementById("aiLiveScanHint");
         if (hint) hint.textContent = 'Bekannte iOS-Einschränkung: als installierte App (Home-Bildschirm-Icon) reagiert die Live-Kamera nicht. Bitte "Stattdessen Foto aufnehmen" nutzen - oder die App einmal direkt im Safari-Tab statt über das Icon öffnen, dort funktioniert Live-Video normalerweise.';
+        emphasizeAiLiveScanFallbackButton();
         return;
     }
 
@@ -5490,6 +5497,21 @@ function finishAiLiveScan() {
     openAiRecognitionReview(items);
 }
 
+// Hebt den "Stattdessen Foto aufnehmen"-Button optisch hervor (gefüllt statt
+// nur umrandet), damit er sofort ins Auge fällt, wenn Live-Video bekanntermaßen
+// nicht funktionieren wird (installierte Home-Bildschirm-App auf iOS, oder
+// file://-Aufruf) - siehe die beiden Aufrufer oben in openAiLiveScanner().
+function emphasizeAiLiveScanFallbackButton() {
+    let btn = document.getElementById("aiLiveScanPhotoFallbackBtn");
+    if (!btn) return;
+    let color = getActionBarColor();
+    btn.style.background = color;
+    btn.style.borderColor = color;
+    btn.style.color = "white";
+    btn.style.fontWeight = "bold";
+    btn.style.boxShadow = "0 2px 10px rgba(0,0,0,0.45)";
+}
+
 // Zeichnet den aktuellen Frame des Live-<video> in ein Offscreen-Canvas
 // (verkleinert, wie resizeImageToBase64() es für Dateien tut) und liefert ihn
 // als JPEG-Data-URL zurück - kein zusätzlicher Kamera-Zugriff nötig, der
@@ -5521,13 +5543,18 @@ async function captureAiLiveScanBurst() {
     shutter.style.opacity = "0.5";
     shutter.style.pointerEvents = "none";
     let originalHint = hint ? hint.textContent : "";
-    if (hint) hint.textContent = "halte das Produkt ruhig im Feld und dreh es langsam...";
+    if (hint) hint.textContent = "langsam drehen: erst Vorderseite (Name), dann MHD-Aufdruck zeigen...";
+    resetAiLiveScanResultPanel();
 
+    // 4 Frames über ~1.5s (statt vorher 3 über ~0.9s) - gibt beim Drehen
+    // spürbar mehr Zeit, bis auch die Seite mit dem MHD-Aufdruck ins Bild
+    // kommt (der ist auf Verpackungen oft erst nach Vorderseite + Name
+    // sichtbar, nicht gleichzeitig).
     let frames = [];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
         let frame = captureVideoFrameBase64(video, 900, 0.75);
         if (frame) frames.push(frame);
-        if (i < 2) await new Promise(r => setTimeout(r, 450));
+        if (i < 3) await new Promise(r => setTimeout(r, 500));
     }
 
     await processAiLiveScanFrames(frames, hint);
@@ -5550,6 +5577,7 @@ async function handleAiLiveScanPhotoCapture(inputEl) {
     let originalHint = hint ? hint.textContent : "";
     let fallbackBtn = document.getElementById("aiLiveScanPhotoFallbackBtn");
     if (fallbackBtn) fallbackBtn.style.opacity = "0.5";
+    resetAiLiveScanResultPanel();
 
     try {
         let frame = await resizeImageToBase64(file, 1000, 0.8);
@@ -5573,10 +5601,12 @@ async function processAiLiveScanFrames(frames, hintEl) {
         if (!frames.length) throw new Error("Kein Kamerabild verfügbar");
         let item = await recognizeSingleProductFromFrames(frames);
         if (!item) {
+            fillAiLiveScanResultPanel(null);
             showAiLiveScanToast("Kein Produkt erkannt - nochmal versuchen", false);
         } else {
             item.customImage = frames[0];
             aiLiveScanItems.push(Object.assign({ id: aiLiveScanItems.length }, item));
+            fillAiLiveScanResultPanel(item);
             showAiLiveScanToast("✓ " + item.name + " erkannt", true);
             let counter = document.getElementById("aiLiveScanCounter");
             if (counter) counter.textContent = aiLiveScanItems.length + " Produkt" + (aiLiveScanItems.length === 1 ? "" : "e");
@@ -5585,6 +5615,7 @@ async function processAiLiveScanFrames(frames, hintEl) {
         }
     } catch (e) {
         console.error("Live-Scan fehlgeschlagen:", e);
+        fillAiLiveScanResultPanel(null);
         showAiLiveScanToast("⚠️ " + (e && e.message ? e.message : "Erkennung fehlgeschlagen"), false);
     }
 }
@@ -5605,6 +5636,32 @@ function showAiLiveScanToast(text, success) {
         el.style.transform = "translateY(-6px)";
         setTimeout(() => el.remove(), 250);
     }, 2200);
+}
+
+// Setzt das Result-Panel (Name/Menge/MHD unten im Live-Scan-Overlay) auf
+// "…" zurück - wird bei JEDEM neuen Foto-Burst aufgerufen, BEVOR die Antwort
+// von Gemini da ist. So ist sofort sichtbar, dass gerade ausgewertet wird,
+// und wenn die Felder sich mit fillAiLiveScanResultPanel() füllen, ist klar
+// erkennbar, was erkannt wurde (und was nicht, z.B. MHD bei Gemüse/wenn
+// unlesbar - bleibt dann einfach "–").
+function resetAiLiveScanResultPanel() {
+    ["aiLiveScanResultName", "aiLiveScanResultMenge", "aiLiveScanResultMhd"].forEach(id => {
+        let el = document.getElementById(id);
+        if (el) el.textContent = "…";
+    });
+}
+
+// Füllt das Result-Panel mit dem Ergebnis eines Bursts. item === null (kein
+// Produkt erkannt) setzt alle drei Felder zurück auf "–". Ein leeres
+// item.mhd (z.B. Gemüse ohne MHD, oder Datum unlesbar) bleibt bewusst "–"
+// statt geraten zu werden - siehe normalizeMhdToPill().
+function fillAiLiveScanResultPanel(item) {
+    let nameEl = document.getElementById("aiLiveScanResultName");
+    let mengeEl = document.getElementById("aiLiveScanResultMenge");
+    let mhdEl = document.getElementById("aiLiveScanResultMhd");
+    if (nameEl) nameEl.textContent = item && item.name ? item.name : "–";
+    if (mengeEl) mengeEl.textContent = item ? (item.menge + (item.einheit ? " " + item.einheit : " Stk")) : "–";
+    if (mhdEl) mhdEl.textContent = item && item.mhd ? item.mhd.replace(/\|/g, ".") : "–";
 }
 
 // Wie recognizeFoodItems(), aber auf EIN einzelnes Produkt zugeschnitten: die
