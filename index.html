@@ -1939,9 +1939,10 @@ let sortimentSearchBarOpen = false;
 let currentPage = "home";
 // "both" = qty for pantry + shopping list, "shopping" = shopping list only, "none" = disabled
 let qtyMode = "both";
-// Optionale, standardmäßig AUS geschaltete Zusatzfunktion: Notizen/Labels an
-// Einkaufslisten-Einträgen (z.B. "Lidl", "DM", "heute noch einkaufen").
-let shoppingLabelsEnabled = false;
+// Zusatzfunktion: Notizen/Labels an Einkaufslisten-Einträgen (z.B. "Lidl",
+// "DM", "heute noch einkaufen"). Standardmäßig AN - kann in den Einstellungen
+// per Haken wieder deaktiviert werden.
+let shoppingLabelsEnabled = true;
 // Vom Nutzer selbst gepflegte, dauerhaft gespeicherte Label-Vorschläge (z.B.
 // die eigenen Stammläden), die dann beim Notiz-Setzen direkt antippbar sind,
 // statt jedes Mal neu getippt werden zu müssen. Keine feste Obergrenze.
@@ -1950,6 +1951,11 @@ let savedShoppingLabels = [];
 // leer = alle Artikel anzeigen. Bewusst NICHT dauerhaft gespeichert, damit die
 // Liste beim nächsten Öffnen wieder ungefiltert startet.
 let shoppingListFilterLabel = "";
+// Steuert, ob das Eingabefeld ("+") bzw. der Entfernen-Modus (Stift) der
+// Label-Filterleiste gerade eingeblendet ist. Bewusst NICHT dauerhaft
+// gespeichert - startet bei jedem Öffnen der Einkaufsliste eingeklappt.
+let shoppingLabelQuickAddOpen = false;
+let shoppingLabelEditMode = false;
 // Steuert Text-Suche innerhalb der Einkaufsliste (analog zu
 // pantrySearchTerm/pantrySearchBarOpen) - filtert die angezeigten Einträge
 // nach Namen, ohne den Label-Filter (Chips) zu beeinflussen.
@@ -11621,7 +11627,7 @@ function buildShoppingItemRowHtml(item, index) {
     // Notiz/Label-Pill: sehr dezent (klein, halbtransparent), nur sichtbar wenn
     // das Feature in den Einstellungen aktiviert UND ein Label gesetzt ist.
     let notePill = (shoppingLabelsEnabled && label)
-        ? `<span style="font-size:0.68em; opacity:0.8; background:rgba(255,255,255,0.22); padding:1px 7px; border-radius:8px; margin-left:5px; white-space:nowrap;">${escapeHtml(label)}</span>`
+        ? `<span style="font-size:0.85em; font-weight:bold; opacity:0.9; background:rgba(255,255,255,0.28); padding:2px 9px; border-radius:9px; margin-left:5px; white-space:nowrap;">${escapeHtml(label)}</span>`
         : "";
     let imgRef = getShoppingItemImageRef(name);
     let imgHtml = imgRef
@@ -11759,22 +11765,7 @@ function openShoppingList() {
     // "Labels verwalten"), Filter zurücksetzen statt auf ein leeres Ergebnis zu laufen.
     if (shoppingListFilterLabel && !savedShoppingLabels.includes(shoppingListFilterLabel)) shoppingListFilterLabel = "";
 
-    // Dezente Filter-Leiste: nur sichtbar, wenn das Notizen-Feature aktiv ist UND
-    // mindestens ein Label gespeichert wurde. "alle" + ein Chip pro gespeichertem
-    // Label; der aktive Chip ist hervorgehoben. Bewusst kompakt/unaufdringlich.
-    let filterBarHtml = "";
-    if (shoppingLabelsEnabled && savedShoppingLabels.length > 0) {
-        let color = getActionBarColor();
-        function chip(value, text) {
-            let active = shoppingListFilterLabel === value;
-            return `<button type="button" class="shopping-filter-chip" data-value="${escapeHtml(value)}" style="background:${active ? color : "rgba(0,0,0,0.06)"}; color:${active ? "white" : "inherit"}; border:none; border-radius:10px; padding:4px 11px; margin:2px; font-size:11.5px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace; white-space:nowrap;">${escapeHtml(text)}</button>`;
-        }
-        filterBarHtml = `
-            <div id="shoppingFilterBar" style="max-width:420px; margin:0 auto 10px auto; display:flex; flex-wrap:wrap; justify-content:center;">
-                ${chip("", "alle")}
-                ${savedShoppingLabels.map(l => chip(l, l)).join("")}
-            </div>`;
-    }
+    let filterBarHtml = buildShoppingLabelBarHtml();
 
     let suggestions = getRecentHistorySuggestions(10);
     let suggestionsHtml = suggestions.length > 0
@@ -11790,7 +11781,7 @@ function openShoppingList() {
 
         <div id="shoppingHomeContent">
             <h1 style="display:flex; align-items:center; justify-content:center; gap:10px;"><img src="data:image/png;base64,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" style="width:32px; height:32px; vertical-align:middle;"> shopping list</h1>
-            ${filterBarHtml}
+            <div id="shoppingFilterBarOuterWrap">${filterBarHtml}</div>
             <div id="shoppingListItemsWrap">${buildShoppingListItemsHtml()}</div>
             <div style="max-width:400px; margin:15px auto 0 auto; display:flex; gap:8px;">
                 <input id="manualShoppingItem" type="text" placeholder="add product manually..." onkeydown="if(event.key==='Enter') addManualShoppingItem();" style="flex:1; box-sizing:border-box; border-radius:8px; border:1px solid #ccc; padding:8px 10px; font-size:14px; font-family: 'Lucida Console', 'Courier New', monospace;" />
@@ -11803,10 +11794,81 @@ function openShoppingList() {
 
         <div class="fixed-action-bar" id="shoppingActionBar" style="--bar-accent:${getActionBarColor()}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(18px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
     `;
+    bindShoppingLabelBarEvents();
+    alignAnyVisibleTopBar();
+}
+
+// Baut die Filter-/Label-Leiste über der Einkaufsliste: Chips ("alle" + jedes
+// gespeicherte Label), dahinter ein "+" (neues Label anlegen) und - nur wenn
+// mindestens ein Label existiert - ein Stift-Icon, das einen Entfernen-Modus
+// umschaltet (siehe shoppingLabelEditMode). Im Entfernen-Modus bekommt jeder
+// Label-Chip statt des Filter-Klicks ein kleines X zum Löschen; "alle" bleibt
+// davon ausgenommen. "+" und Stift schließen sich gegenseitig aus, damit nie
+// beide Eingabe-/Editiermodi gleichzeitig offen sind.
+function buildShoppingLabelBarHtml() {
+    if (!shoppingLabelsEnabled) return "";
+    let color = getActionBarColor();
+
+    function chip(value, text) {
+        let active = shoppingListFilterLabel === value;
+        // "alle" ist im Entfernen-Modus nicht löschbar - bleibt ein normaler Filter-Chip.
+        if (shoppingLabelEditMode && value !== "") {
+            return `<span style="display:inline-flex; align-items:center; gap:5px; background:${active ? color : "rgba(0,0,0,0.06)"}; color:${active ? "white" : "inherit"}; border-radius:12px; padding:6px 6px 6px 14px; margin:3px; font-size:13.5px; font-weight:bold; font-family:'Lucida Console','Courier New',monospace; white-space:nowrap;">
+                ${escapeHtml(text)}
+                <button type="button" class="shopping-label-remove-btn" data-label="${escapeHtml(value)}" title="Label entfernen" style="background:rgba(0,0,0,0.18); border:none; border-radius:50%; width:19px; height:19px; padding:0; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><img src="data:image/png;base64,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" style="width:8px; height:8px; ${active ? "filter:brightness(0) invert(1);" : "opacity:0.65;"} object-fit:contain;"></button>
+            </span>`;
+        }
+        return `<button type="button" class="shopping-filter-chip" data-value="${escapeHtml(value)}" style="background:${active ? color : "rgba(0,0,0,0.06)"}; color:${active ? "white" : "inherit"}; border:none; border-radius:12px; padding:6px 14px; margin:3px; font-size:13.5px; font-weight:bold; cursor:pointer; font-family:'Lucida Console','Courier New',monospace; white-space:nowrap;">${escapeHtml(text)}</button>`;
+    }
+
+    return `
+        <div style="max-width:420px; margin:0 auto 10px auto;">
+            <div id="shoppingFilterBar" style="display:flex; align-items:center; flex-wrap:wrap; justify-content:center;">
+                ${chip("", "alle")}
+                ${savedShoppingLabels.map(l => chip(l, l)).join("")}
+                <button type="button" id="shoppingLabelAddToggleBtn" onclick="toggleShoppingLabelQuickAdd()" title="neues Label anlegen" style="background:${shoppingLabelQuickAddOpen ? color : "rgba(0,0,0,0.06)"}; border:none; border-radius:50%; width:30px; height:30px; margin:3px; padding:0; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:transform 0.15s; transform:rotate(${shoppingLabelQuickAddOpen ? "45deg" : "0deg"});">
+                    <img src="data:image/png;base64,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" style="width:14px; height:14px; ${shoppingLabelQuickAddOpen ? "filter:brightness(0) invert(1);" : "opacity:0.6;"}">
+                </button>
+                ${savedShoppingLabels.length > 0 ? `
+                <button type="button" id="shoppingLabelEditToggleBtn" onclick="toggleShoppingLabelEditMode()" title="Labels entfernen" style="background:${shoppingLabelEditMode ? color : "rgba(0,0,0,0.06)"}; border:none; border-radius:50%; width:30px; height:30px; margin:3px; padding:0; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                    <img src="data:image/png;base64,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" style="width:13px; height:13px; ${shoppingLabelEditMode ? "filter:brightness(0) invert(1);" : "opacity:0.6;"}">
+                </button>` : ""}
+            </div>
+            <div id="shoppingLabelQuickAddWrap" style="display:${shoppingLabelQuickAddOpen ? "flex" : "none"}; align-items:center; justify-content:center; gap:6px; margin-top:6px;">
+                <input id="quickAddShoppingLabelInput" type="text" placeholder="neues Label, z.B. Rewe" onkeydown="if(event.key==='Enter') quickAddShoppingLabel();" style="width:150px; box-sizing:border-box; border-radius:12px; border:1.5px solid ${color}; padding:6px 12px; font-size:13px; font-family:'Lucida Console','Courier New',monospace; outline:none;">
+                <button type="button" onclick="quickAddShoppingLabel()" title="Label anpinnen" style="background:${color}; border:none; border-radius:50%; width:32px; height:32px; padding:0; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 2px 6px rgba(0,0,0,0.15);"><img src="data:image/png;base64,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" style="width:15px; height:15px; filter:brightness(0) invert(1); object-fit:contain;"></button>
+            </div>
+        </div>`;
+}
+
+// Bindet Klicks auf die Filter-Chips (Filtern) bzw. die kleinen X-Buttons
+// (Label entfernen, nur im Entfernen-Modus vorhanden) - nach jedem Neuaufbau
+// der Leiste erneut aufrufen, siehe openShoppingList()/refreshShoppingLabelBar().
+function bindShoppingLabelBarEvents() {
     document.querySelectorAll(".shopping-filter-chip").forEach(chip => {
         chip.onclick = function() { setShoppingListFilter(chip.dataset.value); };
     });
-    alignAnyVisibleTopBar();
+    document.querySelectorAll(".shopping-label-remove-btn").forEach(btn => {
+        btn.onclick = function(e) {
+            e.stopPropagation();
+            let label = btn.dataset.label;
+            removeSavedShoppingLabel(label);
+            if (shoppingListFilterLabel === label) shoppingListFilterLabel = "";
+            refreshShoppingLabelBar();
+        };
+    });
+}
+
+// Baut nur die Label-Leiste neu auf (statt der kompletten Einkaufsliste) -
+// schneller/ruhiger für reine Leisten-Interaktionen (an-/abpinnen, Entfernen-
+// Modus umschalten). Die Artikel-Liste selbst hängt nur am aktiven Filter
+// (shoppingListFilterLabel), nicht an den gespeicherten Labels selbst, wird
+// bei Bedarf also separat aktualisiert (siehe setShoppingListFilter/quickAddShoppingLabel).
+function refreshShoppingLabelBar() {
+    let wrap = document.getElementById("shoppingFilterBarOuterWrap");
+    if (!wrap) return;
+    wrap.innerHTML = buildShoppingLabelBarHtml();
+    bindShoppingLabelBarEvents();
 }
 
 // Setzt/wechselt den Label-Filter der Einkaufsliste und rendert neu. value=""
@@ -11814,6 +11876,42 @@ function openShoppingList() {
 function setShoppingListFilter(value) {
     shoppingListFilterLabel = value || "";
     openShoppingList();
+}
+
+// Blendet das Eingabefeld + Pin-Icon zum Anlegen eines neuen Labels ein/aus
+// (Klick auf den "+"-Chip in der Filter-Leiste). Schließt dabei automatisch
+// den Entfernen-Modus, damit nie beide gleichzeitig offen sind.
+function toggleShoppingLabelQuickAdd() {
+    shoppingLabelQuickAddOpen = !shoppingLabelQuickAddOpen;
+    if (shoppingLabelQuickAddOpen) shoppingLabelEditMode = false;
+    refreshShoppingLabelBar();
+    if (shoppingLabelQuickAddOpen) {
+        let input = document.getElementById("quickAddShoppingLabelInput");
+        if (input) input.focus();
+    }
+}
+
+// Schaltet den Entfernen-Modus der Label-Leiste um (Stift-Icon) - schließt
+// dabei automatisch das "neues Label"-Eingabefeld.
+function toggleShoppingLabelEditMode() {
+    shoppingLabelEditMode = !shoppingLabelEditMode;
+    if (shoppingLabelEditMode) shoppingLabelQuickAddOpen = false;
+    refreshShoppingLabelBar();
+}
+
+// Legt ein neues Label aus dem (erst nach Klick auf "+" sichtbaren) Eingabefeld
+// an ("anpinnen") - schnellerer Weg als über "Labels verwalten" in den
+// Einstellungen. Nach dem Anlegen wird das neue Label direkt als aktiver
+// Filter übernommen und das Eingabefeld wieder eingeklappt.
+function quickAddShoppingLabel() {
+    let input = document.getElementById("quickAddShoppingLabelInput");
+    if (!input) return;
+    let value = input.value;
+    if (addSavedShoppingLabel(value)) {
+        shoppingListFilterLabel = value.trim();
+        shoppingLabelQuickAddOpen = false;
+        openShoppingList();
+    }
 }
 
 function addManualShoppingItem() {
