@@ -122,7 +122,7 @@ body {
     background: #ffffff;
     border-bottom: 2px solid var(--bar-accent, #c0392b);
     border-radius: 0 0 20px 20px;
-    padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+    padding: calc(4px + env(safe-area-inset-top)) 14px 10px;
     box-shadow: 0 4px 14px rgba(0,0,0,0.08);
     z-index: 998;
     display: flex;
@@ -3947,7 +3947,7 @@ function renderHome() {
             <div id="pantry"></div>
         </div>
 
-        <div class="fixed-action-bar" id="pantryActionBar" style="--bar-accent:${getActionBarColor()}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
+        <div class="fixed-action-bar" id="pantryActionBar" style="--bar-accent:${getActionBarColor()}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(18px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
     `;
     alignAnyVisibleTopBar();
     renderPantry();
@@ -5870,7 +5870,7 @@ function openShop() {
             <input type="file" id="aiReceiptOnlyInput" accept="image/*" style="display:none;" onchange="handleAiReceiptOnlyCapture(this)">
         </div>
 
-        <div class="fixed-action-bar" id="shopActionBar" style="--bar-accent:${getActionBarColor()}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
+        <div class="fixed-action-bar" id="shopActionBar" style="--bar-accent:${getActionBarColor()}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(18px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
     `;
     if (shopSearchTerm) filterShopSearch(shopSearchTerm);
     alignAnyVisibleTopBar();
@@ -6962,7 +6962,7 @@ function renderAiRecipeIngredientPicker() {
         </div>
         </div>
 
-        <div class="fixed-action-bar" id="aiRecipePickerActionBar" style="--bar-accent:${color}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
+        <div class="fixed-action-bar" id="aiRecipePickerActionBar" style="--bar-accent:${color}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(18px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
     `;
     alignAnyVisibleTopBar();
 }
@@ -7071,7 +7071,7 @@ function renderAiRecipeIdeasPage() {
         </div>
         </div>
 
-        <div class="fixed-action-bar" id="aiRecipeIdeasActionBar" style="--bar-accent:${color}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
+        <div class="fixed-action-bar" id="aiRecipeIdeasActionBar" style="--bar-accent:${color}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(18px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
     `;
     alignAnyVisibleTopBar();
 }
@@ -7427,7 +7427,7 @@ function renderAiRecognitionReview() {
             </div>
         </div>
 
-        <div class="fixed-action-bar" id="aiReviewActionBar" style="--bar-accent:${color}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
+        <div class="fixed-action-bar" id="aiReviewActionBar" style="--bar-accent:${color}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(18px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
     `;
 
     aiRecognizedItems.forEach(it => {
@@ -8518,7 +8518,7 @@ function openShopCategory(cat) {
         <div class="fixed-top-bar" id="shopCategoryTopBar" style="--bar-accent:${color};">
             <div id="shopCategory-search-wrap" style="width:100%; min-width:0; position:relative;">${renderShopCategoryTopBarInner(cat)}</div>
         </div>`;
-    let bottomBar = `<div class="fixed-action-bar" id="shopCategoryActionBar" style="--bar-accent:${color}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>`;
+    let bottomBar = `<div class="fixed-action-bar" id="shopCategoryActionBar" style="--bar-accent:${color}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(18px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>`;
 
     document.getElementById("app").innerHTML = `${topBar}<div id="shopCategoryHomeContent">${buildShopCategoryListHtml(cat)}</div>${bottomBar}`;
     alignAnyVisibleTopBar();
@@ -8668,7 +8668,7 @@ function openSortimentBearbeiten() {
             <div id="sortimentList"></div>
         </div>
 
-        <div class="fixed-action-bar" id="sortimentActionBar" style="--bar-accent:${getActionBarColor()}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
+        <div class="fixed-action-bar" id="sortimentActionBar" style="--bar-accent:${getActionBarColor()}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(18px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
     `;
     document.getElementById("app").innerHTML = html;
     renderSortimentList();
@@ -8897,7 +8897,7 @@ function openEditLifetime(category, mode, name, event) {
             </div>
         </div>
 
-        <div class="fixed-action-bar" id="editLifetimeActionBar" style="--bar-accent:${color}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
+        <div class="fixed-action-bar" id="editLifetimeActionBar" style="--bar-accent:${color}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(18px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
     `;
     alignAnyVisibleTopBar();
 }
@@ -10695,7 +10695,7 @@ function selectItem(name, image, savedMsg) {
             <style>#mhdDate::placeholder, #mhdDays::placeholder { color: rgba(255,255,255,0.85); }</style>
         </div>
 
-        <div class="fixed-action-bar" id="selectItemActionBar" style="--bar-accent:${getActionBarColor()}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
+        <div class="fixed-action-bar" id="selectItemActionBar" style="--bar-accent:${getActionBarColor()}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(18px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
     `;
     if (qtyMode === "both") initUnitSwiper("pantryUnitSelect");
     alignAnyVisibleTopBar();
@@ -11788,7 +11788,7 @@ function openShoppingList() {
             <button id="moveToPantryBtn" onclick="moveCheckedShoppingItemsToPantry()" title="abgehakte in Speisekammer übernehmen" style="display:${shoppingListChecked.filter(Boolean).length >= 1 ? "inline-flex" : "none"}; background:${getActionBarColor()}; border:none; border-radius:14px; width:44px; height:44px; padding:0; cursor:pointer; align-items:center; justify-content:center; box-shadow: 0 2px 6px rgba(0,0,0,0.15);"><img src="data:image/png;base64,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" style="width:24px; height:24px; filter:brightness(0) invert(1); object-fit:contain;"></button>
         </div>
 
-        <div class="fixed-action-bar" id="shoppingActionBar" style="--bar-accent:${getActionBarColor()}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
+        <div class="fixed-action-bar" id="shoppingActionBar" style="--bar-accent:${getActionBarColor()}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(18px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
     `;
     document.querySelectorAll(".shopping-filter-chip").forEach(chip => {
         chip.onclick = function() { setShoppingListFilter(chip.dataset.value); };
@@ -12299,7 +12299,7 @@ function openRecipes() {
             </div>
         </div>
 
-        <div class="fixed-action-bar" id="recipesActionBar" style="--bar-accent:${color}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
+        <div class="fixed-action-bar" id="recipesActionBar" style="--bar-accent:${color}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(18px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
     `;
     alignAnyVisibleTopBar();
 }
@@ -12760,7 +12760,7 @@ function openCreateRecipe(prefill) {
         </div>
         </div>
 
-        <div class="fixed-action-bar" id="createRecipeActionBar" style="--bar-accent:${color}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
+        <div class="fixed-action-bar" id="createRecipeActionBar" style="--bar-accent:${color}; flex-direction: row; align-items: center; justify-content: space-evenly; flex-wrap: nowrap; gap: 10px; padding: 10px 14px calc(18px + env(safe-area-inset-bottom));">${pantryActionBarInner()}</div>
     `;
     alignAnyVisibleTopBar();
 }
