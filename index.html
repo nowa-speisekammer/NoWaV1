@@ -4816,9 +4816,13 @@ function getRemainingTime(item) {
     return (item.storedAt + baseDays * 86400000) - Date.now();
 }
 
-function toggleOverlay(index, event) {
+// idPrefix erlaubt die Wiederverwendung dieser Funktion für die Kacheln im
+// showMHD()-Popup, die (da sie gleichzeitig mit den normalen Speisekammer-
+// Kacheln im DOM stehen) einen eigenen ID-Namensraum ("mhd-product-tile-")
+// verwenden, um Kollisionen mit gleich indizierten Speisekammer-Kacheln zu vermeiden.
+function toggleOverlay(index, event, idPrefix) {
     if(event.target.tagName === 'BUTTON' || event.target.closest('button')) return;
-    let productEl = document.getElementById("product-tile-" + index);
+    let productEl = document.getElementById((idPrefix || "product-tile-") + index);
     if (productEl) {
         productEl.classList.toggle("active");
     }
@@ -5811,58 +5815,68 @@ function confirmCutCustomItem(index) {
 
 setInterval(() => {
     pantry.forEach((item, index) => {
-        let el = document.getElementById("timer-" + index);
-        if (!el) return;
+        // Zwei ID-Namensräume durchgehen: die normalen Speisekammer-Kacheln
+        // ("") und - falls das showMHD()-Popup gerade offen ist - dessen
+        // eigene, gleichzeitig im DOM stehende Kacheln ("mhd-"). Da beide
+        // parallel sichtbar sein können (Popup UEBER der Speisekammer statt
+        // als eigene Seite), müssen beide unabhängig voneinander pro
+        // Sekunde aktualisiert werden - sonst würde z.B. der Countdown im
+        // Popup einfrieren, weil getElementById() bei doppelten IDs nur das
+        // zuerst im DOM stehende Element träfe.
+        ["", "mhd-"].forEach(prefix => {
+            let el = document.getElementById(prefix + "timer-" + index);
+            if (!el) return;
 
-        let remaining = getRemainingTime(item);
-        let cardEl = el.parentElement;
-        if (cardEl) {
-            cardEl.style.background = getColor(remaining);
-        }
-
-        let circleEl = document.getElementById("svg-circle-" + index);
-        if (circleEl) {
-            let newRingColor = getRingColor(remaining);
-            circleEl.setAttribute("stroke", newRingColor);
-            let maxDays = 7;
-            let ratio = Math.max(0, Math.min(1, remaining / (maxDays * 86400000)));
-            let strokeDashoffset = 439.82 * (1 - ratio);
-            circleEl.setAttribute("stroke-dashoffset", strokeDashoffset);
-
-            let tileEl = document.getElementById("product-tile-" + index);
-            if (tileEl) {
-                tileEl.querySelectorAll(".button-overlay button").forEach(btn => {
-                    btn.style.background = newRingColor;
-                });
+            let remaining = getRemainingTime(item);
+            let cardEl = el.parentElement;
+            if (cardEl) {
+                cardEl.style.background = getColor(remaining);
             }
-        }
 
-        // "kein Ablaufdatum nötig" (item.noExpiry): statt eines erfundenen
-        // "Infinityd|NaNh" zeigt der Timer hier schlicht einen Hinweis, dass
-        // für dieses Produkt kein Ablaufdatum hinterlegt ist.
-        if (item.noExpiry) {
-            el.innerHTML = `<span style="opacity:0.7;">kein MHD</span>`;
-            return;
-        }
+            let circleEl = document.getElementById(prefix + "svg-circle-" + index);
+            if (circleEl) {
+                let newRingColor = getRingColor(remaining);
+                circleEl.setAttribute("stroke", newRingColor);
+                let maxDays = 7;
+                let ratio = Math.max(0, Math.min(1, remaining / (maxDays * 86400000)));
+                let strokeDashoffset = 439.82 * (1 - ratio);
+                circleEl.setAttribute("stroke-dashoffset", strokeDashoffset);
 
-        if (remaining <= 0) {
-            let dOver = Math.floor(-remaining / 86400000);
-            // Das Wort "expired" steht nur noch im Stempel ueber dem Foto (siehe
-            // .expired-stamp) - hier unten bleibt nur noch die relative Zeitangabe.
-            el.innerHTML = `<span style="opacity:0.7;">(${relativeExpiredLabel(dOver)})</span>`;
-            // Falls das Produkt gerade erst WAEHREND die Seite offen ist abgelaufen
-            // ist (renderPantry() lief also noch mit remaining > 0), fehlt der
-            // Stempel im circle-container noch - hier einmalig nachtraeglich setzen.
-            let circleContainer = document.getElementById("circle-container-" + index);
-            if (circleContainer && !circleContainer.querySelector(".expired-stamp")) {
-                circleContainer.insertAdjacentHTML("beforeend", `<div class="expired-stamp" style="background:${getColor(remaining)};">expired</div>`);
+                let tileEl = document.getElementById(prefix + "product-tile-" + index);
+                if (tileEl) {
+                    tileEl.querySelectorAll(".button-overlay button").forEach(btn => {
+                        btn.style.background = newRingColor;
+                    });
+                }
             }
-            return;
-        }
 
-        let d = Math.floor(remaining / 86400000);
-        let h = Math.floor((remaining % 86400000) / 3600000);
-        el.innerHTML = `${d}d|${h}h`;
+            // "kein Ablaufdatum nötig" (item.noExpiry): statt eines erfundenen
+            // "Infinityd|NaNh" zeigt der Timer hier schlicht einen Hinweis, dass
+            // für dieses Produkt kein Ablaufdatum hinterlegt ist.
+            if (item.noExpiry) {
+                el.innerHTML = `<span style="opacity:0.7;">kein MHD</span>`;
+                return;
+            }
+
+            if (remaining <= 0) {
+                let dOver = Math.floor(-remaining / 86400000);
+                // Das Wort "expired" steht nur noch im Stempel ueber dem Foto (siehe
+                // .expired-stamp) - hier unten bleibt nur noch die relative Zeitangabe.
+                el.innerHTML = `<span style="opacity:0.7;">(${relativeExpiredLabel(dOver)})</span>`;
+                // Falls das Produkt gerade erst WAEHREND die Seite offen ist abgelaufen
+                // ist (renderPantry() lief also noch mit remaining > 0), fehlt der
+                // Stempel im circle-container noch - hier einmalig nachtraeglich setzen.
+                let circleContainer = document.getElementById(prefix + "circle-container-" + index);
+                if (circleContainer && !circleContainer.querySelector(".expired-stamp")) {
+                    circleContainer.insertAdjacentHTML("beforeend", `<div class="expired-stamp" style="background:${getColor(remaining)};">expired</div>`);
+                }
+                return;
+            }
+
+            let d = Math.floor(remaining / 86400000);
+            let h = Math.floor((remaining % 86400000) / 3600000);
+            el.innerHTML = `${d}d|${h}h`;
+        });
     });
 
     // Rand + Icon-Farbe der oberen/unteren Leiste (siehe --bar-accent, CSS)
@@ -9167,15 +9181,17 @@ function removeFromInfo(index, uid) {
     }, 100);
 }
 
-// Nach Bestand-Änderungen (aufgegessen, geöffnet, ...): sind wir gerade im
-// Datenblatt-Screen (showMHD) eines Produkts, dort bleiben (Kacheln aktualisieren
-// sich automatisch anhand von currentMHDKey, inkl. Rücksprung zur Speisekammer,
-// falls davon nichts mehr übrig ist) - sonst normal die Speisekammer neu zeichnen.
+// Nach Bestand-Änderungen (aufgegessen, geöffnet, ...): die Speisekammer
+// steht seit der Umstellung von showMHD() auf ein Popup immer sichtbar im
+// Hintergrund, muss also IMMER neu gezeichnet werden (Indizes können sich
+// z.B. durch pantry.splice() beim Aufessen verschoben haben). Ist das
+// Datenblatt-Popup gerade offen (currentMHDKey), zusätzlich auch dieses neu
+// aufbauen (inkl. automatischem Rücksprung/Schließen, falls vom Produkt
+// nichts mehr übrig ist, siehe showMHD()).
 function refreshAfterPantryChange() {
+    renderPantry();
     if (currentMHDKey !== null) {
         showMHD(currentMHDUid);
-    } else {
-        renderPantry();
     }
 }
 
@@ -9189,10 +9205,9 @@ function showMHD(uid) {
     let matches = key ? pantry.map((it, idx) => ({ it, idx })).filter(({ it }) => it.name.toLowerCase() === key) : [];
 
     if (!key || matches.length === 0) {
-        // Nichts (mehr) von diesem Produkt im Bestand -> zurück zur Speisekammer.
-        currentMHDUid = null;
-        currentMHDKey = null;
-        renderHome();
+        // Nichts (mehr) von diesem Produkt im Bestand -> Popup schließen,
+        // die Speisekammer im Hintergrund ist ohnehin schon aktuell.
+        closeMHD();
         return;
     }
 
@@ -9251,14 +9266,20 @@ function showMHD(uid) {
         // .expired-stamp, CSS), sonst waere diese Ansicht inkonsistent.
         let expiredStampDisplay = (remaining <= 0) ? `<div class="expired-stamp" style="background:${bg};">expired</div>` : "";
 
+        // "mhd-"-Präfix bei den IDs: dieses Popup steht jetzt gleichzeitig mit
+        // der (unverändert im Hintergrund sichtbaren) Speisekammer im DOM,
+        // die für dasselbe Item exakt dieselben unpräfixten IDs verwendet
+        // (renderPantry() nutzt denselben Index) - ohne eigenen Namensraum
+        // gäbe es doppelte IDs (siehe toggleOverlay()/setInterval() weiter unten,
+        // die deshalb ebenfalls einen idPrefix-Parameter kennen).
         return `
-            <div class="product" id="product-tile-${idx}" style="background:${bg}; scroll-snap-align:center; flex-shrink:0;" onclick="toggleOverlay(${idx}, event)">
-                <div class="circle-container" id="circle-container-${idx}">
+            <div class="product" id="mhd-product-tile-${idx}" style="background:${bg}; scroll-snap-align:center; flex-shrink:0;" onclick="toggleOverlay(${idx}, event, 'mhd-product-tile-')">
+                <div class="circle-container" id="mhd-circle-container-${idx}">
                     ${hasRealImage(it.image) ? `<img class="${isPhotoLoading(it.image) ? "photo-loading" : ""}" src="${imgSrcFor(it.image)}" data-photo-id="${photoRefId(it.image)}">` : `<div class="no-image-placeholder"></div>`}
                     <svg viewBox="0 0 160 160">
                         <circle cx="80" cy="80" r="70" fill="none" stroke="${ringColor}" stroke-width="10"
                                 stroke-dasharray="439.82" stroke-dashoffset="${strokeDashoffset}"
-                                id="svg-circle-${idx}" stroke-linecap="round"/>
+                                id="mhd-svg-circle-${idx}" stroke-linecap="round"/>
                     </svg>
                     ${expiredStampDisplay}
                     <div class="button-overlay">
@@ -9268,7 +9289,7 @@ function showMHD(uid) {
                 </div>
                 <div class="product-name" style="--name-font-size:${tileNameFontSize(it.name)}px;"><b>${it.name}</b>${openStateIcon}</div>
                 ${qtyDisplay}
-                <div id="timer-${idx}" style="margin-top: 10px;">--</div>
+                <div id="mhd-timer-${idx}" style="margin-top: 10px;">--</div>
             </div>
         `;
     }).join("");
@@ -9280,7 +9301,7 @@ function showMHD(uid) {
     // scroll-snap) oder per Pfeil-Button. Bei nur einer Instanz ganz normal
     // zentriert ohne Karussell-Drumherum.
     let carouselHtml = matches.length > 1 ? `
-        <div style="position:relative; width:calc(100% + 40px); max-width:500px; margin:0 -20px;">
+        <div style="position:relative; width:calc(100% + 44px); max-width:500px; margin:0 -22px;">
             <div id="mhd-carousel-track" class="mhd-carousel-track" style="display:flex; overflow-x:auto; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; padding:0 calc(50% - 115px);" onscroll="_mhdCarouselSyncArrows()">
                 ${tilesHtml}
             </div>
@@ -9290,10 +9311,9 @@ function showMHD(uid) {
     ` : `<div style="display:flex; justify-content:center;">${tilesHtml}</div>`;
 
     let html = `
-        <div style="display: flex; flex-direction: column; align-items: center; padding: 20px;">
             ${carouselHtml}
 
-            <div style="background: white; color: #333; padding: 20px; border-radius: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); text-align: left; max-width: 300px; width: 100%; margin-top:10px;">
+            <div style="background: white; color: #333; padding: 20px; border-radius: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); text-align: left; max-width: 300px; width: 100%; margin:10px auto 0;">
     `;
     let hasAnyLifespanData = !!(shelfLifeDays[key] || openedShelfLifeDays[key] || (cutOption[key] && cutShelfLifeDays[key]));
     if (hasAnyLifespanData) {
@@ -9377,10 +9397,23 @@ function showMHD(uid) {
     html += `
             ${_spoilageDisplayBlock(key, getActionBarColor())}
             </div>
-            <br><button onclick="currentMHDUid = null; currentMHDKey = null; renderHome();" style="background:${getActionBarColor()}; color:white; border:none; border-radius:10px; padding:8px 14px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace;">Zurück</button>
-        </div>
+            <br><button onclick="closeMHD()" style="background:${getActionBarColor()}; color:white; border:none; border-radius:10px; padding:8px 14px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace;">schließen</button>
     `;
-    document.getElementById("app").innerHTML = html;
+
+    // Datenblatt als Popup UEBER der Speisekammer statt als eigene Seite
+    // (übersichtlicher: die Speisekammer bleibt im Hintergrund sichtbar,
+    // Klick auf den abgedunkelten Hintergrund schließt das Popup wieder,
+    // siehe createModal()/closeOnBackdrop). Ist schon ein Popup offen
+    // (z.B. nach refreshAfterPantryChange() während man im Datenblatt eine
+    // Aktion ausführt), dieses zuerst entfernen statt ein zweites daneben
+    // aufzumachen.
+    let existingOverlay = document.getElementById("mhdInfoOverlay");
+    if (existingOverlay) existingOverlay.remove();
+    createModal(
+        `<div class="custom-modal-box" style="max-width:420px; text-align:center;">${html}</div>`,
+        { id: "mhdInfoOverlay", closeOnBackdrop: true }
+    );
+
     // Direkt auf die Ziel-Kachel (targetUid) springen, damit z.B. beim Klick auf
     // die 3. Instanz im Sortiment auch wirklich diese - nicht immer die erste -
     // mittig im Karussell erscheint. Ohne Animation (behavior:"auto"), damit
@@ -9389,10 +9422,21 @@ function showMHD(uid) {
     // ja von der finalen Scroll-Position abhängt.
     let targetIdxEntry = matches.find(m => m.it.uid === targetUid);
     if (targetIdxEntry) {
-        let targetTile = document.getElementById('product-tile-' + targetIdxEntry.idx);
+        let targetTile = document.getElementById('mhd-product-tile-' + targetIdxEntry.idx);
         if (targetTile) targetTile.scrollIntoView({ inline: 'center', block: 'nearest' });
     }
     setTimeout(_mhdCarouselSyncArrows, 0);
+}
+
+// Schließt das showMHD()-Popup wieder (Klick auf "schließen", auf den
+// abgedunkelten Hintergrund, oder automatisch, wenn vom Produkt nichts mehr
+// übrig ist). Die Speisekammer dahinter braucht dabei KEIN renderHome()/
+// renderPantry() mehr, da sie die ganze Zeit über normal weiterlief.
+function closeMHD() {
+    currentMHDUid = null;
+    currentMHDKey = null;
+    let overlay = document.getElementById("mhdInfoOverlay");
+    if (overlay) overlay.remove();
 }
 
 // Scrollt das Datenblatt-Karussell (mehrere Instanzen desselben Produkts) um
