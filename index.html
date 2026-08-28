@@ -5413,7 +5413,7 @@ function renderPantry() {
                 ? `<div style="position:absolute; top:10px; left:10px; width:24px; height:24px; border-radius:50%; background:${isSelected ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.28)"}; border:1.5px solid white; display:flex; align-items:center; justify-content:center; box-sizing:border-box; z-index:3;">${isSelected ? `<img src="data:image/png;base64,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" style="width:12px; height:12px; filter:brightness(0) invert(1); object-fit:contain;">` : ""}</div>`
                 : "";
             html += `
-                <div class="product${window.pantrySelectMode ? " select-mode" : ""}${isSelected ? " selected" : ""}${window.pantryEditMode ? " edit-mode" : ""}" id="product-tile-${index}" style="background:${bg}" onclick="pantryTileClick('${item.uid}', ${index}, event)">
+                <div class="product${window.pantrySelectMode ? " select-mode" : ""}${isSelected ? " selected" : ""}${window.pantryEditMode ? " edit-mode" : ""}" id="product-tile-${index}" data-uid="${item.uid}" style="background:${bg}" onclick="pantryTileClick('${item.uid}', ${index}, event)">
                     ${window.pantrySelectMode ? selectBadge : (window.pantryEditMode ? `${xBtnEdit}${eatBtnEdit}` : `${penBtn}${xBtn}${eatBtn}`)}
                     <div class="circle-container" id="circle-container-${index}">
                         ${hasRealImage(item.image) ? `<img class="${isPhotoLoading(item.image) ? "photo-loading" : ""}" src="${imgSrcFor(item.image)}" data-photo-id="${photoRefId(item.image)}">` : `<div class="no-image-placeholder"></div>`}
@@ -7917,9 +7917,7 @@ function openRecipeUrlImportModal(prefillUrl) {
         <div class="custom-modal-box" style="--modal-accent:${color}; max-width:320px;">
             <h2 style="margin-top:0; font-size:18px;">Rezept von Website</h2>
             <p style="font-size:12px; opacity:0.7; text-align:left;">
-                Link zu einem Rezept einfügen (z.B. von Chefkoch, Kptncook, einem Foodblog o.ä.) -
-                die KI liest Zutaten, Mengen und Zubereitung von der Seite und trägt sie direkt
-                ins Rezeptformular ein.
+                Link zu einem Rezept einfügen
             </p>
             <input id="recipeUrlImportInput" type="url" placeholder="https://www.chefkoch.de/..." value="${_escapeHtml(prefillUrl || "")}"
                 onkeydown="if(event.key==='Enter'){ event.preventDefault(); submitRecipeUrlImport(); }"
@@ -14043,7 +14041,7 @@ function openNewRecipeChoiceModal() {
                     </span>
                     <span>
                         <div style="font-size:13px; font-weight:bold; color:#222;">Von Website importieren</div>
-                        <div style="font-size:10.5px; opacity:0.55; margin-top:1px;">Link einfügen (z.B. Chefkoch) - KI übernimmt Zutaten &amp; Zubereitung</div>
+                        <div style="font-size:10.5px; opacity:0.55; margin-top:1px;">Rezept-Link einfügen für Rezepterstellung</div>
                     </span>
                 </button>
             </div>
@@ -17701,6 +17699,99 @@ const TILE_DRAG_CONFIG = {
         if (tile && dragActive) snapBack(tile);
         reset();
     }, { passive: true, capture: true });
+})();
+
+// Öffnet aus dem Pantry-Bearbeitungsmodus (enterPantryEditMode()) heraus das
+// Datenblatt-Popup (showMHD()) direkt im dortigen Direkt-Bearbeiten-Modus
+// (window.mhdEditMode) - dieselbe Ansicht wie sonst über den info-Button auf
+// der normalen Kachel, nur dass der im Bearbeitungsmodus ja gar nicht
+// angezeigt wird (siehe renderPantry(): dort ersetzen xBtnEdit/eatBtnEdit den
+// penBtn/infoBtn). Die Kachel erscheint dadurch groß und mittig im Popup
+// (leichter zu treffen) und bekommt sofort das Label-Feld unter dem Tile
+// angezeigt (mhdLabelSectionHtml) - exakt derselbe Aufbau wie überall sonst
+// im Datenblatt, nur eben sofort statt erst nach Antippen des Stift-Buttons.
+function openPantryTileDetailFromEditMode(uid) {
+    window.mhdEditMode = true;
+    showMHD(uid);
+}
+
+// Zweiter Long-Press, diesmal auf eine einzelne Kachel WÄHREND der Pantry-
+// Bearbeitungsmodus schon aktiv ist (siehe enterPantryEditMode()): das obere
+// Drag/Swipe-IIFE bricht seinen eigenen touchstart-Handler in diesem Fall
+// bewusst sofort ab (siehe "window.pantryEditMode" dort), Kacheln sind dort
+// also komplett frei für dieses eigene, unabhängige Long-Press-Muster (analog
+// zur Tooltip-Long-Press-Erkennung weiter unten). Ein ruhiges Halten+Loslassen
+// öffnet openPantryTileDetailFromEditMode() für die gehaltene Kachel; normales
+// kurzes Antippen (z.B. um eine "wird gegessen/entfernt"-Markierung wieder
+// rückgängig zu machen, siehe pantryTileClick()) bleibt dabei unverändert.
+(function() {
+    const HOLD_MS = 450;          // bewusst länger als der erste Long-Press (LONG_PRESS_MS im
+                                   // Drag/Swipe-IIFE oben), damit sich "Bearbeitungsmodus verlassen"
+                                   // (schnelles Antippen) und "Datenblatt öffnen" (Halten) klar
+                                   // unterscheiden.
+    const MOVE_TOLERANCE = 12;    // px Bewegung vor Ablauf des Timers -> kein Long-Press, normales
+                                   // Scrollen/Tippen gewinnt.
+
+    let timer = null, fired = false, suppressNextClick = false;
+    let startX = 0, startY = 0, targetUid = null;
+
+    function overlayOpen() {
+        return !!document.querySelector('.custom-modal-overlay, [id$="Overlay"]');
+    }
+
+    document.addEventListener("touchstart", (e) => {
+        fired = false;
+        timer = null;
+        if (currentPage !== "home" || !window.pantryEditMode || overlayOpen()) return;
+        let tile = e.target.closest && e.target.closest(".product.edit-mode");
+        if (!tile) return;
+        if (e.target.closest("button, input, .unit-swiper")) return; // Quick-Action-Buttons/Eingabefelder unveraendert per Tap bedienbar
+        targetUid = tile.dataset.uid;
+        if (!targetUid) return;
+        let t = e.touches[0];
+        if (!t) return;
+        startX = t.clientX; startY = t.clientY;
+        timer = setTimeout(() => {
+            fired = true;
+            if (navigator.vibrate) navigator.vibrate(15);
+        }, HOLD_MS);
+    }, { passive: true, capture: true });
+
+    document.addEventListener("touchmove", (e) => {
+        if (!timer || !e.touches[0]) return;
+        if (Math.abs(e.touches[0].clientX - startX) > MOVE_TOLERANCE ||
+            Math.abs(e.touches[0].clientY - startY) > MOVE_TOLERANCE) {
+            clearTimeout(timer); timer = null;
+        }
+    }, { passive: true, capture: true });
+
+    document.addEventListener("touchend", (e) => {
+        clearTimeout(timer); timer = null;
+        if (fired && targetUid) {
+            e.preventDefault(); // verhindert den zusaetzlichen normalen Klick auf die Kachel (pantryTileClick)
+            suppressNextClick = true;
+            openPantryTileDetailFromEditMode(targetUid);
+        }
+        fired = false; targetUid = null;
+    }, { passive: false, capture: true });
+
+    document.addEventListener("touchcancel", () => {
+        clearTimeout(timer); timer = null;
+        fired = false; targetUid = null;
+    }, { passive: true, capture: true });
+
+    // Sicherheitsnetz wie bei der Tooltip-Long-Press-Erkennung weiter unten:
+    // manche mobilen Browser feuern trotz preventDefault() im touchend noch
+    // ein synthetisches click-Event - das würde sonst pantryTileClick()
+    // auslösen und z.B. eine gerade gesetzte "wird gegessen/entfernt"-
+    // Markierung versehentlich wieder zurücksetzen.
+    document.addEventListener("click", (e) => {
+        if (suppressNextClick) {
+            suppressNextClick = false;
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }, true);
 })();
 
 function showSyncIndicator() {
