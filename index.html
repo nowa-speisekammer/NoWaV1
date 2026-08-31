@@ -2192,6 +2192,12 @@ function applyShoppingCategorySortSettings(data) {
 
 // recipes: [{name, ingredients:[{name, qty, unit}]}]
 let recipes = [];
+// Vom Nutzer gemerkte Sync-Codes anderer Personen ("Freunde"), damit man beim
+// "Rezepte entdecken" (siehe openDiscoverRecipesModal) nicht jedes Mal den
+// Code neu eintippen muss. { code, name } - name ist ein frei wählbarer,
+// rein lokaler Anzeigename (z.B. "Oma") und hat nichts mit dem groupName der
+// jeweiligen Person zu tun (den kennt man ja beim Merken meist noch gar nicht).
+let friendSyncCodes = [];
 // Optionale Portionsangabe in der Rezeptübersicht (String, damit ein leeres Feld möglich ist).
 // Bleibt bestehen, bis der Nutzer sie ändert oder leert ("so wie zuletzt eingestellt").
 let recipeOverviewServings = "";
@@ -3232,6 +3238,7 @@ function saveCustomData() {
             history: history.map(stripCatalogImageForSync), historyPageEnabled, statsEnabled, nutritionEnabled, nutritionOverviewFields, nutritionTrackerFields, nutritionLog, nutritionGoals, nutritionGoalModes, historyStats, historyStatsResetAt, productStats,
             hiddenProducts, shoppingList, shoppingListChecked, qtyMode, shoppingLabelsEnabled, savedShoppingLabels, pantryLabelsEnabled, savedPantryLabels, recipes,
             shoppingCategorySortEnabled, shoppingCategoryOrder,
+            friendSyncCodes,
             lastLocalUpdate
         }));
     } catch (e) {
@@ -3298,6 +3305,7 @@ function loadCustomData() {
         if (Array.isArray(data.savedPantryLabels)) savedPantryLabels = data.savedPantryLabels;
         applyShoppingCategorySortSettings(data);
         if (data.recipes) recipes = data.recipes;
+        if (Array.isArray(data.friendSyncCodes)) friendSyncCodes = data.friendSyncCodes;
         // Zeitstempel der letzten lokalen Änderung wiederherstellen (überlebt Neuladen/Schließen),
         // damit ein veralteter Cloud-Snapshot beim Start diese Änderung nicht überschreiben kann.
         if (data.lastLocalUpdate) lastLocalUpdate = data.lastLocalUpdate;
@@ -3420,7 +3428,7 @@ function buildBackupPayload() {
         customCutOption, customCutShelfLifeDays,
         customSpoilageInfo, pantry, history, historyPageEnabled, statsEnabled, nutritionEnabled, nutritionOverviewFields, nutritionTrackerFields, nutritionGoals, nutritionGoalModes, nutritionLog, historyStats, historyStatsResetAt, productStats, hiddenProducts, shoppingList,
         shoppingListChecked, qtyMode, shoppingLabelsEnabled, savedShoppingLabels, pantryLabelsEnabled, savedPantryLabels, recipes, photoCache,
-        shoppingCategorySortEnabled, shoppingCategoryOrder
+        shoppingCategorySortEnabled, shoppingCategoryOrder, friendSyncCodes
     };
 }
 
@@ -3544,6 +3552,7 @@ function applyBackupPayload(data) {
     if (Array.isArray(data.savedPantryLabels)) savedPantryLabels = data.savedPantryLabels;
     applyShoppingCategorySortSettings(data);
     if (data.recipes) recipes = data.recipes;
+    if (Array.isArray(data.friendSyncCodes)) friendSyncCodes = data.friendSyncCodes;
     if (data.photoCache) {
         photoCache = Object.assign({}, photoCache, data.photoCache);
         Object.keys(data.photoCache).forEach(id => idbPutPhoto(id, data.photoCache[id]));
@@ -15936,6 +15945,7 @@ function buildRecipesListHtml() {
                 ${iconHtml}
                 <span style="flex:1; text-align:left;">
                     <span style="font-weight:bold; font-size:15px; font-family:'Lucida Console','Courier New',monospace; color:#222;">${r.name}${badge}</span>
+                    ${r.sourceCode ? `<div style="font-size:9.5px; opacity:0.4; font-family:'Lucida Console','Courier New',monospace; margin-top:1px;">creator: sync code ${_escapeHtml(r.sourceCode)}</div>` : ""}
                     <div style="margin-top:2px;">${renderStarRating(i, r.rating, { size: 13 })}</div>
                     ${nutritionLine}
                 </span>
@@ -17844,7 +17854,13 @@ function saveRecipe() {
     let instructions = (instructionsEl ? instructionsEl.value : (window.recipeInstructionsDraft || "")).trim();
     let servingsEl = document.getElementById("recipe-servings-input");
     let servings = Math.max(1, parseInt(servingsEl ? servingsEl.value : window.recipeServingsDraft) || 1);
-    let recipe = { name, ingredients, image: maybeStorePhoto(window.recipeImageDraft) || null, instructions: instructions || "", servings };
+    // Stabile, unveraenderliche ID (unabhaengig vom Array-Index, der sich beim
+    // Loeschen/Sortieren anderer Rezepte verschieben kann) - wird u.a. als
+    // Bewertungs-Schluessel fuer die Community-Bewertungen gebraucht (siehe
+    // communityRatingKeyFor/buildPublishableRecipe weiter unten).
+    let existingId = (window.recipeEditIndex !== null && window.recipeEditIndex >= 0 && recipes[window.recipeEditIndex])
+        ? recipes[window.recipeEditIndex].id : null;
+    let recipe = { id: existingId || genRecipeId(), name, ingredients, image: maybeStorePhoto(window.recipeImageDraft) || null, instructions: instructions || "", servings };
     if (nutritionEnabled) {
         let nutrition = {};
         NUTRITION_FIELD_DEFS.forEach(f => {
@@ -17878,6 +17894,13 @@ function deleteRecipe(index) {
     }, { danger: true });
 }
 
+// Erzeugt eine kurze, praktisch eindeutige Rezept-ID (Zeitstempel + Zufalls-
+// suffix) - gebraucht als stabiler Bewertungs-Schluessel, der auch dann
+// gleich bleibt, wenn sich Name/Zutaten des Rezepts spaeter aendern.
+function genRecipeId() {
+    return "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
 // FEATURE: Sterne-Bewertung (1-5) fuer gespeicherte Rezepte. Rendert 5 an-
 // klickbare Sterne (☆/★) fuer recipes[index].rating - genutzt sowohl in der
 // kompakten Rezeptliste (buildRecipesListHtml) als auch gross in der
@@ -17907,6 +17930,15 @@ function setRecipeRating(index, stars) {
     if (!r) return;
     r.rating = (r.rating === stars) ? 0 : stars;
     saveCustomData();
+    // Zusaetzlich zur rein lokalen Bewertung: bei einem von einem Freund
+    // uebernommenen ODER selbst veroeffentlichten Rezept die eigene Bewertung
+    // auch in den geteilten Bewertungs-Pool hochladen (siehe communityRatingKeyFor
+    // weiter unten) und die evtl. offene Bewertungs-Box zum Neuladen markieren.
+    if (communityRatingKeyFor(r)) {
+        submitCommunityRating(r, r.rating || 0);
+        let box = document.getElementById("communityRatingsBox");
+        if (box) box.dataset.loaded = "0";
+    }
     if (document.getElementById("recipeDetailHomeContent")) {
         openRecipeDetail(index);
     } else {
@@ -17950,7 +17982,13 @@ function resolvePublishableImage(image) {
 // keine internen Status-Felder), da sie ja bei einer fremden Person landet,
 // die weder dasselbe Sortiment noch dieselben Einstellungen hat.
 function buildPublishableRecipe(r) {
+    // Ohne ID (z.B. sehr alte, vor diesem Feature angelegte Rezepte) jetzt
+    // eine erzeugen und dauerhaft am lokalen Rezept speichern - sonst wuerde
+    // bei jedem erneuten Veroeffentlichen eine NEUE ID vergeben und bereits
+    // abgegebene Community-Bewertungen wuerden verwaisen.
+    if (!r.id) { r.id = genRecipeId(); saveCustomData(); }
     return resolvePublishableImage(r.image).then(imageData => ({
+        id: r.id,
         name: r.name,
         ingredients: r.ingredients,
         instructions: r.instructions || "",
@@ -17958,6 +17996,105 @@ function buildPublishableRecipe(r) {
         nutrition: r.nutrition || null,
         imageData: imageData || null
     }));
+}
+
+// ── Community-Bewertungen fuer uebernommene/veroeffentlichte Rezepte ──────
+// Ergaenzt die rein lokale Sterne-Bewertung oben um eine geraeteuebergreifende
+// Bewertung: Fuer ein von einem Freund uebernommenes Rezept (sourceCode +
+// sourceRecipeId, siehe importDiscoveredRecipe) ODER ein selbst veroeffent-
+// lichtes Rezept (published + id + eigener syncCode) landet die eigene
+// Sterne-Bewertung zusaetzlich in recipeRatings/{code}_{recipeId} - dort kann
+// dann jede Person, die dasselbe Rezept hat, den Schnitt aller Bewertungen
+// sehen (siehe openRecipeDetail / toggleCommunityRatingsBox).
+
+// Liefert {code, id} als eindeutigen Bewertungs-Schluessel fuer ein Rezept,
+// oder null, wenn (noch) keine Community-Zuordnung existiert.
+function communityRatingKeyFor(r) {
+    if (r.sourceCode && r.sourceRecipeId) return { code: r.sourceCode, id: r.sourceRecipeId };
+    if (r.published && r.id && syncCode) return { code: syncCode, id: r.id };
+    return null;
+}
+
+function communityRatingDocId(key) { return key.code + "_" + key.id; }
+
+// Geraeteweit stabile, anonyme Kennung fuers Bewerten OHNE eigenen Sync-Code
+// (z.B. bevor man selbst je "Sync" benutzt hat) - verhindert Mehrfach-
+// Bewertungen desselben Geraets, ohne dafuer einen Account zu brauchen.
+function getAnonRaterId() {
+    let id = localStorage.getItem("anonRaterId");
+    if (!id) {
+        id = "anon" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        localStorage.setItem("anonRaterId", id);
+    }
+    return id;
+}
+
+// Sendet/aktualisiert die eigene Bewertung in der Cloud. Ein Feld pro
+// bewertender Person/Geraet (per Sync-Code oder Anon-ID), per merge:true
+// gesetzt - eine erneute Bewertung ersetzt so die eigene alte, statt
+// Duplikate anzusammeln.
+function submitCommunityRating(r, stars) {
+    let key = communityRatingKeyFor(r);
+    if (!key || !initFirebase()) return;
+    let raterKey = (syncCode || getAnonRaterId()).replace(/[.$#\[\]\/]/g, "_");
+    syncDb.collection("recipeRatings").doc(communityRatingDocId(key))
+        .set({ ratings: { [raterKey]: stars } }, { merge: true })
+        .catch(e => console.warn("Community-Bewertung konnte nicht gesendet werden:", e));
+}
+
+// Laedt alle bisher abgegebenen Bewertungen fuer ein Rezept und berechnet
+// Schnitt + Anzahl. callback(null) bei Fehler/ohne Cloud-Verbindung,
+// callback({avg, count, values}) sonst (values: absteigend sortierte
+// einzelne Sternebewertungen, ohne Bezug zur bewertenden Person).
+function fetchCommunityRatings(r, callback) {
+    let key = communityRatingKeyFor(r);
+    if (!key || !initFirebase()) { callback(null); return; }
+    syncDb.collection("recipeRatings").doc(communityRatingDocId(key)).get()
+        .then(doc => {
+            let ratings = (doc.exists && doc.data().ratings) || {};
+            let values = Object.values(ratings).filter(v => typeof v === "number" && v > 0);
+            if (values.length === 0) { callback({ avg: 0, count: 0, values: [] }); return; }
+            let avg = values.reduce((a, b) => a + b, 0) / values.length;
+            callback({ avg, count: values.length, values: values.sort((a, b) => b - a) });
+        })
+        .catch(e => { console.warn("Community-Bewertungen konnten nicht geladen werden:", e); callback(null); });
+}
+
+// Auf-/Zuklappen der Bewertungs-Uebersicht in der Rezept-Detailansicht (siehe
+// openRecipeDetail). Laedt die Daten nur beim ERSTEN Aufklappen aus der Cloud
+// (box.dataset.loaded verhindert unnoetiges Neuladen bei jedem Klick - wird
+// aber gezielt zurueckgesetzt, wenn man selbst gerade neu bewertet hat, siehe
+// setRecipeRating oben).
+function toggleCommunityRatingsBox(index) {
+    let box = document.getElementById("communityRatingsBox");
+    let chev = document.getElementById("communityRatingsChev");
+    if (!box) return;
+    let isOpen = box.style.display !== "none";
+    if (isOpen) { box.style.display = "none"; if (chev) chev.textContent = "▾"; return; }
+    box.style.display = "block";
+    if (chev) chev.textContent = "▴";
+    if (box.dataset.loaded === "1") return;
+    box.innerHTML = `<div style="text-align:center; font-size:12px; opacity:0.5; padding:10px;">lädt...</div>`;
+    let r = recipes[index];
+    fetchCommunityRatings(r, function(result) {
+        box.dataset.loaded = "1";
+        if (!result) {
+            box.innerHTML = `<div style="text-align:center; font-size:12px; opacity:0.5; padding:10px;">Bewertungen aktuell nicht verfügbar</div>`;
+            return;
+        }
+        if (result.count === 0) {
+            box.innerHTML = `<div style="text-align:center; font-size:12px; opacity:0.5; padding:10px;">noch keine Bewertungen von anderen</div>`;
+            return;
+        }
+        box.innerHTML = `
+            <div style="text-align:center; padding:10px 14px;">
+                <div style="font-size:22px; font-weight:bold; color:#e8a622;">${result.avg.toFixed(1)} ★</div>
+                <div style="font-size:11px; opacity:0.55; margin-top:2px;">${result.count} Bewertung${result.count === 1 ? "" : "en"}</div>
+                <div style="display:flex; justify-content:center; gap:4px; margin-top:8px; flex-wrap:wrap;">
+                    ${result.values.map(v => `<span style="font-size:11px; background:rgba(0,0,0,0.05); border-radius:8px; padding:2px 7px;">${v}★</span>`).join("")}
+                </div>
+            </div>`;
+    });
 }
 
 // Lädt ALLE aktuell als "veröffentlicht" markierten Rezepte dieses Geräts
@@ -18009,6 +18146,61 @@ function toggleRecipePublish(index) {
 let discoverResultsCode = null;
 let discoverResults = [];
 
+// ── Freunde-Liste (gemerkte fremde Sync-Codes) ──────────────────────────
+// Erspart das erneute Eintippen eines Codes: einmal gemerkt, taucht die
+// Person als anklickbare Zeile oben im "Rezepte entdecken"-Popup auf.
+function addFriendSyncCode(code, name) {
+    code = (code || "").trim().toUpperCase();
+    if (!code) return;
+    let existing = friendSyncCodes.find(f => f.code === code);
+    if (existing) existing.name = (name || "").trim();
+    else friendSyncCodes.push({ code, name: (name || "").trim() });
+    saveCustomData();
+}
+
+function removeFriendSyncCode(code) {
+    friendSyncCodes = friendSyncCodes.filter(f => f.code !== code);
+    saveCustomData();
+    let listBox = document.getElementById("discoverFriendsListBox");
+    if (listBox) listBox.innerHTML = renderFriendsListHtml();
+}
+
+// Baut die Liste der gemerkten Freunde als anklickbare Zeilen (Klick auf die
+// Zeile selbst lädt direkt deren veröffentlichte Rezepte, siehe
+// fetchDiscoverableRecipes(code)) mit einem kleinen "entfernen"-Button pro
+// Zeile. Leerer String, wenn (noch) keine Freunde gemerkt sind.
+function renderFriendsListHtml() {
+    if (friendSyncCodes.length === 0) return "";
+    return `
+        <div style="margin-bottom:10px;">
+            <div style="font-size:10.5px; opacity:0.5; font-weight:bold; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:6px; padding-left:2px;">meine Freunde</div>
+            ${friendSyncCodes.map(f => `
+                <div onclick="fetchDiscoverableRecipes('${f.code}')" style="display:flex; align-items:center; gap:8px; background:white; border-radius:12px; padding:8px 10px; margin-bottom:6px; box-shadow:0 2px 6px rgba(0,0,0,0.07); cursor:pointer;">
+                    <div class="no-image-placeholder-small" style="width:26px; height:26px; flex-shrink:0;"></div>
+                    <span style="flex:1; min-width:0; font-size:13px; font-family:'Lucida Console','Courier New',monospace; overflow-wrap:break-word;">
+                        <b>${_escapeHtml(f.name || f.code)}</b>${f.name ? ` <span style="opacity:0.4; font-size:10.5px;">${_escapeHtml(f.code)}</span>` : ""}
+                    </span>
+                    <button onclick="event.stopPropagation(); removeFriendSyncCode('${f.code}')" title="Freund entfernen" style="background:rgba(0,0,0,0.05); border:none; border-radius:8px; width:26px; height:26px; padding:0; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><img src="data:image/png;base64,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" style="width:11px; height:11px; opacity:0.5;"></button>
+                </div>
+            `).join("")}
+        </div>`;
+}
+
+// Speichert den zuletzt abgefragten Code (discoverResultsCode) als neuen
+// Freund, mit optionalem Namen aus dem Eingabefeld daneben (siehe
+// renderDiscoverResults). Aktualisiert danach sowohl die Freundesliste oben
+// im Popup als auch die Ergebnisse (blendet die "merken"-Zeile aus, da der
+// Code jetzt schon ein Freund ist).
+function saveDiscoverResultsAsFriend() {
+    if (!discoverResultsCode) return;
+    let nameInput = document.getElementById("discoverFriendNameInput");
+    addFriendSyncCode(discoverResultsCode, nameInput ? nameInput.value : "");
+    showToast("Als Freund gemerkt");
+    let listBox = document.getElementById("discoverFriendsListBox");
+    if (listBox) listBox.innerHTML = renderFriendsListHtml();
+    renderDiscoverResults();
+}
+
 // Popup zum Eingeben eines FREMDEN Sync-Codes, um dessen veröffentlichte
 // Rezepte anzusehen - bewusst getrennt vom normalen Sync-Modal
 // (openSyncModal), da hier NICHT das eigene Gerät mit dem fremden Haushalt
@@ -18018,8 +18210,9 @@ function openDiscoverRecipesModal() {
     createModal(`
         <div class="custom-modal-box" style="--modal-accent:${color}; max-width:340px; padding:22px 20px 20px;">
             ${modalCloseX("this.closest('.custom-modal-overlay').remove()")}
-            <div style="font-size:15px; font-weight:bold; margin-bottom:8px; text-align:center;">Rezepte entdecken</div>
-            <div style="font-size:12px; opacity:0.65; line-height:1.5; margin-bottom:14px; text-align:center;">Sync-Code einer anderen Person eingeben, um ihre veröffentlichten Rezepte zu sehen und zu übernehmen.</div>
+            <div style="font-size:15px; font-weight:bold; margin-bottom:10px; text-align:center;">Rezepte entdecken</div>
+            <div id="discoverFriendsListBox">${renderFriendsListHtml()}</div>
+            <div style="font-size:12px; opacity:0.65; line-height:1.5; margin-bottom:10px; text-align:center;">Neuen Sync-Code eingeben, um dessen veröffentlichte Rezepte zu sehen:</div>
             <input id="discoverCodeInput" type="text" placeholder="z.B. KMP-7TQX" autocapitalize="characters"
                 onkeydown="if(event.key==='Enter') fetchDiscoverableRecipes();"
                 style="width:100%; box-sizing:border-box; border-radius:12px; border:1.5px solid #ddd; padding:10px 12px; font-size:14px; font-family:'Lucida Console','Courier New',monospace; text-align:center; text-transform:uppercase; outline:none; margin-bottom:12px;">
@@ -18030,11 +18223,15 @@ function openDiscoverRecipesModal() {
     setTimeout(() => document.getElementById("discoverCodeInput")?.focus(), 50);
 }
 
-function fetchDiscoverableRecipes() {
+// codeOverride: wird gesetzt, wenn auf eine Zeile in der Freundesliste
+// geklickt wird (siehe renderFriendsListHtml) - dann direkt diesen Code
+// abfragen, ohne dass er erst ins Eingabefeld getippt werden muss.
+function fetchDiscoverableRecipes(codeOverride) {
     let input = document.getElementById("discoverCodeInput");
-    let code = (input ? input.value : "").trim().toUpperCase();
+    let code = (codeOverride || (input ? input.value : "")).trim().toUpperCase();
     if (!code) { showToast("Bitte einen Code eingeben"); return; }
     if (!initFirebase()) { showToast("⚠️ Sync nicht verfügbar"); return; }
+    if (input) input.value = code;
     let box = document.getElementById("discoverResultsBox");
     if (box) box.innerHTML = `<div style="text-align:center; font-size:12px; opacity:0.5; padding:10px;">lädt...</div>`;
     syncDb.collection("publishedRecipes").doc(code).get().then((doc) => {
@@ -18053,11 +18250,19 @@ function fetchDiscoverableRecipes() {
 function renderDiscoverResults() {
     let box = document.getElementById("discoverResultsBox");
     if (!box) return;
+    let isFriend = friendSyncCodes.some(f => f.code === discoverResultsCode);
+    // Nur anbieten, den Code als Freund zu merken, wenn er es noch nicht ist -
+    // sonst stünde die Zeile jedes Mal wieder da, obwohl schon gemerkt.
+    let saveFriendHtml = !isFriend ? `
+        <div style="display:flex; gap:6px; margin-bottom:12px;">
+            <input id="discoverFriendNameInput" type="text" placeholder="Name (optional)" style="flex:1; min-width:0; box-sizing:border-box; border-radius:10px; border:1.5px solid #ddd; padding:7px 10px; font-size:12.5px; font-family:'Lucida Console','Courier New',monospace; outline:none;">
+            <button onclick="saveDiscoverResultsAsFriend()" style="background:#3f6fb0; color:white; border:none; border-radius:10px; padding:0 12px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace; font-size:11.5px; font-weight:bold; white-space:nowrap;">🔖 als Freund merken</button>
+        </div>` : "";
     if (discoverResults.length === 0) {
-        box.innerHTML = `<div style="text-align:center; font-size:12px; opacity:0.5; padding:10px;">keine veröffentlichten Rezepte unter diesem Code gefunden</div>`;
+        box.innerHTML = saveFriendHtml + `<div style="text-align:center; font-size:12px; opacity:0.5; padding:10px;">keine veröffentlichten Rezepte unter diesem Code gefunden</div>`;
         return;
     }
-    box.innerHTML = discoverResults.map((r, idx) => `
+    box.innerHTML = saveFriendHtml + discoverResults.map((r, idx) => `
         <div style="display:flex; align-items:center; gap:10px; background:white; border-radius:12px; padding:8px 10px; margin-bottom:8px; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
             ${r.imageData ? `<img src="${r.imageData}" style="width:38px; height:38px; border-radius:50%; object-fit:cover; flex-shrink:0;">` : `<div class="no-image-placeholder-small" style="width:38px; height:38px; flex-shrink:0;"></div>`}
             <span style="flex:1; min-width:0; font-size:13px; font-family:'Lucida Console','Courier New',monospace; font-weight:bold; overflow-wrap:break-word;">${_escapeHtml(r.name || "")}</span>
@@ -18076,11 +18281,21 @@ function importDiscoveredRecipe(idx) {
     let src = discoverResults[idx];
     if (!src) return;
     let recipe = {
+        id: genRecipeId(),
         name: src.name,
         ingredients: JSON.parse(JSON.stringify(src.ingredients || [])),
         instructions: src.instructions || "",
         servings: src.servings || 4,
-        image: src.imageData ? maybeStorePhoto(src.imageData) : null
+        image: src.imageData ? maybeStorePhoto(src.imageData) : null,
+        // Herkunft merken: der Sync-Code der Person, von der das Rezept stammt
+        // (kleine Randnotiz in der Detailansicht, siehe openRecipeDetail) sowie
+        // dessen ID im publizierenden Rezeptbuch - zusammen der Schluessel, unter
+        // dem Bewertungen anderer Uebernehmer dieses Rezepts gesammelt werden
+        // (siehe communityRatingKeyFor). Ohne src.id (sehr alte Veroeffentlichung
+        // vor diesem Feature) bleibt sourceRecipeId leer und es gibt schlicht
+        // (noch) keine geteilten Bewertungen fuer dieses Rezept.
+        sourceCode: discoverResultsCode || "",
+        sourceRecipeId: src.id || null
     };
     if (src.nutrition) recipe.nutrition = src.nutrition;
     recipes.push(recipe);
@@ -18337,7 +18552,15 @@ function openRecipeDetail(index) {
 
         <div id="recipeDetailHomeContent">
         <h1 style="display:flex; align-items:center; justify-content:center; gap:10px;">${r.name}</h1>
+        ${r.sourceCode ? `<div style="text-align:center; font-size:10.5px; opacity:0.45; font-family:'Lucida Console','Courier New',monospace; margin:-8px 0 6px;">creator: sync code ${_escapeHtml(r.sourceCode)}</div>` : ""}
         <div style="display:flex; justify-content:center; margin:-6px 0 8px;">${renderStarRating(index, r.rating, { size: 23 })}</div>
+        ${communityRatingKeyFor(r) ? `
+        <div style="max-width:420px; margin:0 auto 12px; padding:0 14px;">
+            <button onclick="toggleCommunityRatingsBox(${index})" style="width:100%; box-sizing:border-box; background:rgba(0,0,0,0.045); border:none; border-radius:12px; padding:8px 14px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace; font-size:11px; font-weight:bold; color:#777; letter-spacing:0.03em; display:flex; align-items:center; justify-content:center; gap:6px;">
+                <span>Bewertungen anderer</span><span id="communityRatingsChev" style="font-size:10px; opacity:0.7;">▾</span>
+            </button>
+            <div id="communityRatingsBox" data-loaded="0" style="display:none; margin-top:6px; background:white; border-radius:16px; box-shadow:0 3px 12px rgba(0,0,0,0.09); overflow:hidden;"></div>
+        </div>` : ""}
         <div style="display:flex; justify-content:center; margin:0 0 14px;">
             <button onclick="toggleRecipePublish(${index})" title="${r.published ? "Veröffentlichung zurückziehen" : "Für andere per Sync-Code sichtbar machen"}" style="background:${r.published ? "#2c8a4a" : "rgba(0,0,0,0.06)"}; color:${r.published ? "white" : "#666"}; border:none; border-radius:12px; padding:6px 15px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace; font-size:11px; font-weight:bold; letter-spacing:0.02em;">
                 ${r.published ? "✓ veröffentlicht" : "🌐 veröffentlichen"}
@@ -21127,6 +21350,7 @@ function collectSyncPayload() {
         history: history.map(stripCatalogImageForSync), historyPageEnabled, statsEnabled, nutritionEnabled, nutritionOverviewFields, nutritionTrackerFields, nutritionGoals, nutritionGoalModes, nutritionLog, historyStats, historyStatsResetAt, productStats,
         hiddenProducts, shoppingList, shoppingListChecked, qtyMode, shoppingLabelsEnabled, savedShoppingLabels, pantryLabelsEnabled, savedPantryLabels, recipes,
         shoppingCategorySortEnabled, shoppingCategoryOrder,
+        friendSyncCodes,
         groupName: syncGroupName || "",
         updatedAt: Date.now()
     };
@@ -21189,6 +21413,7 @@ function applyRemotePayload(data) {
         if (Array.isArray(data.savedPantryLabels)) savedPantryLabels = data.savedPantryLabels;
         applyShoppingCategorySortSettings(data);
         if (data.recipes) recipes = data.recipes;
+        if (Array.isArray(data.friendSyncCodes)) friendSyncCodes = data.friendSyncCodes;
         // Gruppennamen übernehmen (auch leeren String, falls er auf einem anderen
         // Gerät gelöscht wurde) und lokal merken, damit er beim nächsten App-Start
         // sofort verfügbar ist, ohne auf die Cloud warten zu müssen.
