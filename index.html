@@ -17971,7 +17971,15 @@ function syncPublishedRecipes() {
         let payload = { groupName: syncGroupName || "", recipes: list, updatedAt: Date.now() };
         warnIfSyncPayloadTooBig(payload);
         syncDb.collection("publishedRecipes").doc(syncCode).set(payload)
-            .catch(e => { console.warn("Veröffentlichen fehlgeschlagen:", e); showToast("⚠️ Veröffentlichen fehlgeschlagen"); });
+            .then(() => console.log("Veröffentlichung hochgeladen:", syncCode, list.length, "Rezept(e)"))
+            .catch(e => {
+                console.warn("Veröffentlichen fehlgeschlagen:", e);
+                // Fehlercode/-meldung wird bewusst mit angezeigt (statt eines generischen
+                // Texts) - "permission-denied" hier bedeutet fast immer, dass die Firestore-
+                // Sicherheitsregeln die neue Collection "publishedRecipes" noch nicht
+                // erlauben (siehe Kommentar oben bei firebaseConfig / "households").
+                showToast("⚠️ Veröffentlichen fehlgeschlagen: " + (e.code || e.message || e));
+            });
     });
 }
 
@@ -18035,7 +18043,10 @@ function fetchDiscoverableRecipes() {
         renderDiscoverResults();
     }).catch((e) => {
         console.warn("Rezepte konnten nicht geladen werden:", e);
-        if (box) box.innerHTML = `<div style="text-align:center; font-size:12px; opacity:0.5; padding:10px;">⚠️ Fehler beim Laden</div>`;
+        // Fehlercode mit anzeigen statt eines generischen Texts - "permission-denied"
+        // bedeutet fast immer, dass die Firestore-Regeln die Collection
+        // "publishedRecipes" noch nicht erlauben (siehe Kommentar bei syncPublishedRecipes).
+        if (box) box.innerHTML = `<div style="text-align:center; font-size:12px; opacity:0.6; padding:10px;">⚠️ Fehler beim Laden (${_escapeHtml(e.code || e.message || String(e))})</div>`;
     });
 }
 
