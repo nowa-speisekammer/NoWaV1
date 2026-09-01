@@ -2100,6 +2100,10 @@ let sortimentSearchTerm = "";
 // ist (analog zu shopSearchBarOpen etc.).
 let sortimentSearchBarOpen = false;
 let currentPage = "home";
+// Siehe openRecipeDetail/openRecipes/applyRemotePayload: haelt fest, welche
+// Rezept-Detailseite (falls ueberhaupt eine) gerade offen ist, damit ein
+// Live-Sync-Update nicht ungefragt zurueck zur Rezeptliste springt.
+let openRecipeDetailIndex = null;
 // "both" = qty for pantry + shopping list, "shopping" = shopping list only, "none" = disabled
 let qtyMode = "both";
 // Zusatzfunktion: Notizen/Labels an Einkaufslisten-Einträgen (z.B. "Lidl",
@@ -15945,8 +15949,8 @@ function buildRecipesListHtml() {
                 ${iconHtml}
                 <span style="flex:1; text-align:left;">
                     <span style="font-weight:bold; font-size:15px; font-family:'Lucida Console','Courier New',monospace; color:#222;">${r.name}${badge}</span>
-                    ${r.sourceCode ? `<div style="font-size:9.5px; opacity:0.4; font-family:'Lucida Console','Courier New',monospace; margin-top:1px;">creator: sync code ${_escapeHtml(r.sourceCode)}</div>` : ""}
-                    <div style="margin-top:2px;">${renderStarRating(i, r.rating, { size: 13 })}</div>
+                    ${r.sourceCode ? `<div style="display:flex; align-items:center; gap:3px; font-size:9.5px; opacity:0.4; font-family:'Lucida Console','Courier New',monospace; margin-top:1px;"><img src="%%FRIENDICON%%" style="width:9px; height:9px; opacity:0.85;">creator: ${_escapeHtml(_creatorDisplayName(r))}</div>` : ""}
+                    ${r.rating ? `<div style="margin-top:2px;">${renderStarRating(i, r.rating, { size: 13, readOnly: true })}</div>` : ""}
                     ${nutritionLine}
                 </span>
                 <span style="display:flex; gap:4px;">
@@ -16057,6 +16061,10 @@ function openMealPlanPlaceholder() {
 
 function openRecipes() {
     currentPage = "recipes";
+    // War gerade eine Detailansicht offen, gilt das nicht mehr - siehe
+    // openRecipeDetailIndex weiter unten (verhindert, dass ein Live-Sync-Update
+    // faelschlich versucht, eine nicht mehr offene Detailseite neu aufzubauen).
+    openRecipeDetailIndex = null;
     // Bugfix: analog zu pendingSortimentItem bei openSortimentBearbeiten() -
     // ein abgebrochenes "neues Rezept"-Formular liess Bild/Zutaten/Anleitung
     // in den window.recipe...Draft-Variablen zurueck (die bisher nur beim
@@ -17907,14 +17915,20 @@ function genRecipeId() {
 // Detailansicht (openRecipeDetail). event.stopPropagation() ist noetig,
 // damit ein Klick auf einen Stern in der Liste nicht zusaetzlich die
 // dahinterliegende Karte oeffnet (siehe onclick="openRecipeDetail(i)" dort).
+// opts.readOnly = true: reine Anzeige ohne Klick-Handler (siehe buildRecipesListHtml
+// weiter unten) - verhindert versehentliches Ändern der Bewertung, wenn man
+// eigentlich nur auf die Karte klicken wollte, um das Rezept zu öffnen.
+// Bewertbar ist ein Rezept dadurch nur noch in der Detailansicht.
 function renderStarRating(index, rating, opts) {
     opts = opts || {};
     let size = opts.size || 15;
+    let readOnly = !!opts.readOnly;
     rating = rating || 0;
     let stars = "";
     for (let s = 1; s <= 5; s++) {
         let filled = s <= rating;
-        stars += `<span onclick="event.stopPropagation(); setRecipeRating(${index}, ${s});" title="${s} von 5 Sternen" style="font-size:${size}px; line-height:1; color:${filled ? "#e8a622" : "rgba(0,0,0,0.18)"}; cursor:pointer; user-select:none;">${filled ? "★" : "☆"}</span>`;
+        let interactiveAttrs = readOnly ? "" : ` onclick="event.stopPropagation(); setRecipeRating(${index}, ${s});" title="${s} von 5 Sternen"`;
+        stars += `<span${interactiveAttrs} style="font-size:${size}px; line-height:1; color:${filled ? "#e8a622" : "rgba(0,0,0,0.18)"}; cursor:${readOnly ? "default" : "pointer"}; user-select:none;">${filled ? "★" : "☆"}</span>`;
     }
     return `<span style="display:inline-flex; gap:1px;">${stars}</span>`;
 }
@@ -17930,20 +17944,34 @@ function setRecipeRating(index, stars) {
     if (!r) return;
     r.rating = (r.rating === stars) ? 0 : stars;
     saveCustomData();
-    // Zusaetzlich zur rein lokalen Bewertung: bei einem von einem Freund
-    // uebernommenen ODER selbst veroeffentlichten Rezept die eigene Bewertung
-    // auch in den geteilten Bewertungs-Pool hochladen (siehe communityRatingKeyFor
-    // weiter unten) und die evtl. offene Bewertungs-Box zum Neuladen markieren.
-    if (communityRatingKeyFor(r)) {
-        submitCommunityRating(r, r.rating || 0);
-        let box = document.getElementById("communityRatingsBox");
-        if (box) box.dataset.loaded = "0";
-    }
-    if (document.getElementById("recipeDetailHomeContent")) {
-        openRecipeDetail(index);
+
+    // Nur die Sterne-Zeile in der Detailansicht aktualisieren, OHNE die ganze
+    // Seite neu aufzubauen - so bleiben aufgeklappte Bereiche (Zutaten-
+    // Anleitung, Nährwerte, Bewertungen anderer), die Portionsauswahl und die
+    // Scrollposition erhalten. Vorher fühlte sich jeder Sterne-Klick durch den
+    // kompletten Neuaufbau der Seite "holprig" an.
+    let starsRow = document.getElementById("recipeRatingRow");
+    if (starsRow) {
+        starsRow.innerHTML = renderStarRating(index, r.rating, { size: 23 });
     } else {
         let container = document.getElementById("recipes-list");
         if (container) container.innerHTML = buildRecipesListHtml();
+    }
+
+    // Zusaetzlich zur rein lokalen Bewertung: bei einem von einem Freund
+    // uebernommenen ODER selbst veroeffentlichten Rezept die eigene Bewertung
+    // auch in den geteilten Bewertungs-Pool hochladen (siehe communityRatingKeyFor
+    // weiter unten). War die Bewertungs-Box gerade offen, sofort neu laden -
+    // sonst nur fuers naechste Aufklappen vormerken.
+    if (communityRatingKeyFor(r)) {
+        let box = document.getElementById("communityRatingsBox");
+        if (box) box.dataset.loaded = "0";
+        // Erst NACH erfolgreichem Hochladen der eigenen Bewertung neu laden (siehe
+        // Kommentar bei submitCommunityRating) - sonst kann die eigene, gerade erst
+        // abgegebene Bewertung im frisch geladenen Ergebnis noch fehlen.
+        submitCommunityRating(r, r.rating || 0).then(() => {
+            if (box && box.style.display !== "none") renderCommunityRatingsBoxContent(box, index);
+        });
     }
 }
 
@@ -18009,9 +18037,38 @@ function buildPublishableRecipe(r) {
 
 // Liefert {code, id} als eindeutigen Bewertungs-Schluessel fuer ein Rezept,
 // oder null, wenn (noch) keine Community-Zuordnung existiert.
+// Leitet aus dem Rezeptnamen einen stabilen, URL-/Dokument-ID-tauglichen
+// Schluessel ab. Bewusst NICHT die zufaellige r.id/r.sourceRecipeId genutzt -
+// die waere nur dann auf beiden Seiten (Ersteller UND jede Person, die das
+// Rezept uebernommen hat) identisch, wenn ALLE beteiligten Geraete das Rezept
+// NACH Einfuehrung dieses Bewertungs-Features neu veroeffentlicht bzw. neu
+// uebernommen haetten. Der Name ist dagegen auf jedem Geraet schon immer
+// vorhanden - Bewertungen funktionieren dadurch sofort, auch fuer laengst
+// gespeicherte Rezepte.
+// Zeigt statt eines rohen Sync-Codes den zugehoerigen Namen an, falls
+// bekannt: bei einem übernommenen Rezept der vom Ersteller in dessen
+// Einstellungen vergebene Gruppenname (r.sourceName, siehe
+// importDiscoveredRecipe), sonst - falls dieser Code zufällig in der eigenen
+// Freundesliste gespeichert ist (siehe addFriendSyncCode) - der dort
+// hinterlegte Name. Ohne beides bleibt es beim Code.
+function _creatorDisplayName(r) {
+    if (r.sourceName) return r.sourceName;
+    let friend = friendSyncCodes.find(f => f.code === r.sourceCode);
+    if (friend && friend.name) return friend.name;
+    return "sync code " + r.sourceCode;
+}
+
+function _normalizedRecipeKey(name) {
+    return (name || "").trim().toLowerCase()
+        .replace(/[äöü]/g, m => ({ ä: "ae", ö: "oe", ü: "ue" }[m]))
+        .replace(/ß/g, "ss")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "rezept";
+}
+
 function communityRatingKeyFor(r) {
-    if (r.sourceCode && r.sourceRecipeId) return { code: r.sourceCode, id: r.sourceRecipeId };
-    if (r.published && r.id && syncCode) return { code: syncCode, id: r.id };
+    if (r.sourceCode) return { code: r.sourceCode, id: _normalizedRecipeKey(r.name) };
+    if (r.published && syncCode) return { code: syncCode, id: _normalizedRecipeKey(r.name) };
     return null;
 }
 
@@ -18033,38 +18090,137 @@ function getAnonRaterId() {
 // bewertender Person/Geraet (per Sync-Code oder Anon-ID), per merge:true
 // gesetzt - eine erneute Bewertung ersetzt so die eigene alte, statt
 // Duplikate anzusammeln.
+// Gibt bewusst das Promise des Schreibvorgangs zurueck (statt "void") - der
+// Aufrufer (setRecipeRating) wartet darauf, BEVOR die Bewertungs-Box neu
+// geladen wird. Ohne das laeuft ein Wettlauf: das direkt danach ausgeloeste
+// Neuladen (fetchCommunityRatings) kann schneller vom Server antworten als
+// dieser Schreibvorgang serverseitig durch ist - die eigene, gerade erst
+// abgegebene Bewertung wuerde dann faelschlich noch fehlen ("noch keine
+// Bewertungen von anderen", obwohl man selbst gerade bewertet hat).
 function submitCommunityRating(r, stars) {
     let key = communityRatingKeyFor(r);
-    if (!key || !initFirebase()) return;
+    if (!key || !initFirebase()) return Promise.resolve();
     let raterKey = (syncCode || getAnonRaterId()).replace(/[.$#\[\]\/]/g, "_");
-    syncDb.collection("recipeRatings").doc(communityRatingDocId(key))
+    return syncDb.collection("recipeRatings").doc(communityRatingDocId(key))
         .set({ ratings: { [raterKey]: stars } }, { merge: true })
-        .catch(e => console.warn("Community-Bewertung konnte nicht gesendet werden:", e));
+        .catch(e => {
+            console.warn("Community-Bewertung konnte nicht gesendet werden:", e);
+            // Sichtbar machen statt nur in der Konsole zu verschwinden - sonst denkt
+            // man, die Bewertung sei angekommen, obwohl sie z.B. an fehlenden
+            // Firestore-Regeln fuer die Collection "recipeRatings" gescheitert ist.
+            showToast("⚠️ Bewertung konnte nicht geteilt werden: " + (e.code || e.message || e));
+        });
 }
 
 // Laedt alle bisher abgegebenen Bewertungen fuer ein Rezept und berechnet
-// Schnitt + Anzahl. callback(null) bei Fehler/ohne Cloud-Verbindung,
-// callback({avg, count, values}) sonst (values: absteigend sortierte
-// einzelne Sternebewertungen, ohne Bezug zur bewertenden Person).
+// Schnitt + Anzahl. callback({error}) bei Fehler/ohne Zuordnung/ohne Cloud-
+// Verbindung (error = kurzer Grund fuer die Anzeige), callback({avg, count,
+// entries}) sonst - entries: [raterKey, sterne]-Paare, absteigend nach
+// Sternen sortiert, raterKey ist der Sync-Code (oder eine Anon-ID) der
+// bewertenden Person (siehe _communityRaterLabel in toggleCommunityRatingsBox).
 function fetchCommunityRatings(r, callback) {
     let key = communityRatingKeyFor(r);
-    if (!key || !initFirebase()) { callback(null); return; }
-    syncDb.collection("recipeRatings").doc(communityRatingDocId(key)).get()
+    if (!key) { callback({ error: "kein Community-Rezept" }); return; }
+    if (!initFirebase()) { callback({ error: "Sync nicht verfügbar" }); return; }
+    withTimeout(syncDb.collection("recipeRatings").doc(communityRatingDocId(key)).get(), 8000)
         .then(doc => {
             let ratings = (doc.exists && doc.data().ratings) || {};
-            let values = Object.values(ratings).filter(v => typeof v === "number" && v > 0);
-            if (values.length === 0) { callback({ avg: 0, count: 0, values: [] }); return; }
-            let avg = values.reduce((a, b) => a + b, 0) / values.length;
-            callback({ avg, count: values.length, values: values.sort((a, b) => b - a) });
+            let entries = Object.entries(ratings).filter(([, v]) => typeof v === "number" && v > 0);
+            if (entries.length === 0) { callback({ avg: 0, count: 0, entries: [] }); return; }
+            let avg = entries.reduce((sum, [, v]) => sum + v, 0) / entries.length;
+            entries.sort((a, b) => b[1] - a[1]);
+            callback({ avg, count: entries.length, entries });
         })
-        .catch(e => { console.warn("Community-Bewertungen konnten nicht geladen werden:", e); callback(null); });
+        .catch(e => {
+            console.warn("Community-Bewertungen konnten nicht geladen werden:", e);
+            callback({ error: e.code || e.message || String(e) });
+        });
+}
+
+// Baut den Inhalt der Bewertungs-Box neu auf (Laden aus der Cloud + Anzeige) -
+// eigene Funktion, damit sowohl das erste Aufklappen (toggleCommunityRatingsBox)
+// als auch ein direktes Neuladen nach eigener Bewertung (setRecipeRating) ohne
+// Zu-/Aufklapp-Flackern denselben Code nutzen.
+function renderCommunityRatingsBoxContent(box, index) {
+    let color = getActionBarColor();
+    // Dezenter Drei-Punkte-Lade-Indikator statt reinem "lädt..."-Text - selbes
+    // Bewegungsmuster wie der bestehende KI-Ladezustand der App (siehe
+    // .ai-recipe-loading-dot), nur in der aktuellen Akzentfarbe.
+    box.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:center; gap:5px; padding:22px 14px;">
+            <span class="cr-loading-dot"></span><span class="cr-loading-dot"></span><span class="cr-loading-dot"></span>
+        </div>
+        <style>
+            @keyframes crDotPulse { 0%, 80%, 100% { opacity:0.25; transform:translateY(0); } 40% { opacity:1; transform:translateY(-2px); } }
+            .cr-loading-dot { width:6px; height:6px; border-radius:50%; background:${color}; display:inline-block; animation: crDotPulse 1.2s ease-in-out infinite; }
+            .cr-loading-dot:nth-child(2) { animation-delay: 0.15s; }
+            .cr-loading-dot:nth-child(3) { animation-delay: 0.3s; }
+        </style>`;
+    let r = recipes[index];
+    let myKey = (syncCode || getAnonRaterId()).replace(/[.$#\[\]\/]/g, "_");
+    fetchCommunityRatings(r, function(result) {
+        if (result.error) {
+            // Fehlercode mit anzeigen statt eines generischen Texts -
+            // "permission-denied" bedeutet fast immer, dass die Firestore-Regeln
+            // die Collection "recipeRatings" noch nicht erlauben (siehe Kommentar
+            // bei syncPublishedRecipes weiter unten für dasselbe Muster). NICHT
+            // als geladen markieren, damit ein erneutes Auf-/Zuklappen einen
+            // frischen Versuch macht (z.B. nach einem vorübergehenden Fehler).
+            box.dataset.loaded = "0";
+            box.innerHTML = `<div style="text-align:center; font-size:12px; opacity:0.6; padding:16px 14px;">⚠️ Bewertungen konnten nicht geladen werden<br><span style="opacity:0.7; font-size:10.5px;">(${_escapeHtml(result.error)})</span></div>`;
+            return;
+        }
+        box.dataset.loaded = "1";
+        if (result.count === 0) {
+            box.innerHTML = `<div style="text-align:center; font-size:12px; opacity:0.5; padding:16px 14px;">noch keine Bewertungen von anderen</div>`;
+            return;
+        }
+        // Farbiger Kopfbereich (Schnitt + Anzahl) im selben Stil wie z.B. die
+        // Nährwert-Detailbox weiter oben - macht die Box auf den ersten Blick
+        // als eigenständige, zusammengehörige Karte erkennbar statt als lose
+        // Textzeilen.
+        box.innerHTML = `
+            <div style="background:${color}; padding:10px 16px; display:flex; align-items:center; gap:8px;">
+                <span style="font-size:12px; font-weight:bold; font-family:'Lucida Console','Courier New',monospace; color:white; opacity:0.9; letter-spacing:0.06em; text-transform:uppercase;">Bewertungen</span>
+                <span style="margin-left:auto; font-size:14px; font-weight:bold; font-family:'Lucida Console','Courier New',monospace; color:white; white-space:nowrap;">${result.avg.toFixed(1)} ★ <span style="font-size:10.5px; font-weight:400; opacity:0.75;">(${result.count})</span></span>
+            </div>
+            <div>
+                ${result.entries.map(([raterKey, stars], idx) => {
+                    let mine = raterKey === myKey;
+                    let label = _communityRaterLabel(raterKey, r);
+                    let initials = _escapeHtml(label.replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "??");
+                    return `
+                    <div style="display:flex; align-items:center; gap:10px; padding:9px 16px; ${idx < result.entries.length - 1 ? "border-bottom:1px solid #f0f0f0;" : ""}">
+                        <div style="width:26px; height:26px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:bold; font-family:'Lucida Console','Courier New',monospace; background:${mine ? color : "rgba(0,0,0,0.07)"}; color:${mine ? "white" : "#777"};">${initials}</div>
+                        <span style="flex:1; min-width:0; font-size:12px; font-family:'Lucida Console','Courier New',monospace; opacity:0.75; overflow-wrap:anywhere;">${_escapeHtml(label)}${mine ? ` <span style="opacity:0.55; font-style:italic;">(du)</span>` : ""}</span>
+                        <span style="font-size:12.5px; font-weight:bold; color:#e8a622; white-space:nowrap; flex-shrink:0;">${stars} ★</span>
+                    </div>`;
+                }).join("")}
+            </div>`;
+    });
+}
+
+// Zeigt eine Anon-Kennung (getAnonRaterId, Format "anon...") nicht im
+// Rohformat an, sondern schlicht als "anonym" - ein echter Sync-Code wird
+// unveraendert angezeigt (genau das war hier gewünscht: "4 Sterne von <code>").
+// Zeigt eine Anon-Kennung (getAnonRaterId, Format "anon...") nicht im
+// Rohformat an, sondern schlicht als "anonym". Für einen echten Sync-Code:
+// ist es der Ersteller dieses Rezepts, dessen Namen zeigen (r.sourceName,
+// siehe _creatorDisplayName); ist der Code in der eigenen Freundesliste
+// gespeichert, deren Namen zeigen; sonst bleibt es beim rohen Code.
+function _communityRaterLabel(raterKey, r) {
+    if (raterKey.indexOf("anon") === 0) return "anonym";
+    if (r && r.sourceCode === raterKey && r.sourceName) return r.sourceName;
+    let friend = friendSyncCodes.find(f => f.code === raterKey);
+    if (friend && friend.name) return friend.name;
+    return raterKey;
 }
 
 // Auf-/Zuklappen der Bewertungs-Uebersicht in der Rezept-Detailansicht (siehe
 // openRecipeDetail). Laedt die Daten nur beim ERSTEN Aufklappen aus der Cloud
 // (box.dataset.loaded verhindert unnoetiges Neuladen bei jedem Klick - wird
 // aber gezielt zurueckgesetzt, wenn man selbst gerade neu bewertet hat, siehe
-// setRecipeRating oben).
+// setRecipeRating oben, oder wenn das Laden zuvor fehlgeschlagen ist).
 function toggleCommunityRatingsBox(index) {
     let box = document.getElementById("communityRatingsBox");
     let chev = document.getElementById("communityRatingsChev");
@@ -18074,27 +18230,7 @@ function toggleCommunityRatingsBox(index) {
     box.style.display = "block";
     if (chev) chev.textContent = "▴";
     if (box.dataset.loaded === "1") return;
-    box.innerHTML = `<div style="text-align:center; font-size:12px; opacity:0.5; padding:10px;">lädt...</div>`;
-    let r = recipes[index];
-    fetchCommunityRatings(r, function(result) {
-        box.dataset.loaded = "1";
-        if (!result) {
-            box.innerHTML = `<div style="text-align:center; font-size:12px; opacity:0.5; padding:10px;">Bewertungen aktuell nicht verfügbar</div>`;
-            return;
-        }
-        if (result.count === 0) {
-            box.innerHTML = `<div style="text-align:center; font-size:12px; opacity:0.5; padding:10px;">noch keine Bewertungen von anderen</div>`;
-            return;
-        }
-        box.innerHTML = `
-            <div style="text-align:center; padding:10px 14px;">
-                <div style="font-size:22px; font-weight:bold; color:#e8a622;">${result.avg.toFixed(1)} ★</div>
-                <div style="font-size:11px; opacity:0.55; margin-top:2px;">${result.count} Bewertung${result.count === 1 ? "" : "en"}</div>
-                <div style="display:flex; justify-content:center; gap:4px; margin-top:8px; flex-wrap:wrap;">
-                    ${result.values.map(v => `<span style="font-size:11px; background:rgba(0,0,0,0.05); border-radius:8px; padding:2px 7px;">${v}★</span>`).join("")}
-                </div>
-            </div>`;
-    });
+    renderCommunityRatingsBoxContent(box, index);
 }
 
 // Lädt ALLE aktuell als "veröffentlicht" markierten Rezepte dieses Geräts
@@ -18145,6 +18281,7 @@ function toggleRecipePublish(index) {
 // Index darauf zugreifen kann, ohne die Daten nochmal aus der Cloud zu holen.
 let discoverResultsCode = null;
 let discoverResults = [];
+let discoverResultsGroupName = "";
 
 // ── Freunde-Liste (gemerkte fremde Sync-Codes) ──────────────────────────
 // Erspart das erneute Eintippen eines Codes: einmal gemerkt, taucht die
@@ -18234,9 +18371,14 @@ function fetchDiscoverableRecipes(codeOverride) {
     if (input) input.value = code;
     let box = document.getElementById("discoverResultsBox");
     if (box) box.innerHTML = `<div style="text-align:center; font-size:12px; opacity:0.5; padding:10px;">lädt...</div>`;
-    syncDb.collection("publishedRecipes").doc(code).get().then((doc) => {
+    withTimeout(syncDb.collection("publishedRecipes").doc(code).get(), 8000).then((doc) => {
         discoverResultsCode = code;
         discoverResults = (doc.exists && Array.isArray(doc.data().recipes)) ? doc.data().recipes : [];
+        // Der Gruppenname wird schon lange zusammen mit den Rezepten hochgeladen
+        // (siehe syncPublishedRecipes) - hier mitnehmen, damit beim Übernehmen
+        // eines Rezepts (importDiscoveredRecipe) "creator: <Name>" statt nur
+        // "creator: sync code <CODE>" angezeigt werden kann.
+        discoverResultsGroupName = (doc.exists && doc.data().groupName) || "";
         renderDiscoverResults();
     }).catch((e) => {
         console.warn("Rezepte konnten nicht geladen werden:", e);
@@ -18246,7 +18388,6 @@ function fetchDiscoverableRecipes(codeOverride) {
         if (box) box.innerHTML = `<div style="text-align:center; font-size:12px; opacity:0.6; padding:10px;">⚠️ Fehler beim Laden (${_escapeHtml(e.code || e.message || String(e))})</div>`;
     });
 }
-
 function renderDiscoverResults() {
     let box = document.getElementById("discoverResultsBox");
     if (!box) return;
@@ -18288,14 +18429,16 @@ function importDiscoveredRecipe(idx) {
         servings: src.servings || 4,
         image: src.imageData ? maybeStorePhoto(src.imageData) : null,
         // Herkunft merken: der Sync-Code der Person, von der das Rezept stammt
-        // (kleine Randnotiz in der Detailansicht, siehe openRecipeDetail) sowie
-        // dessen ID im publizierenden Rezeptbuch - zusammen der Schluessel, unter
-        // dem Bewertungen anderer Uebernehmer dieses Rezepts gesammelt werden
-        // (siehe communityRatingKeyFor). Ohne src.id (sehr alte Veroeffentlichung
-        // vor diesem Feature) bleibt sourceRecipeId leer und es gibt schlicht
-        // (noch) keine geteilten Bewertungen fuer dieses Rezept.
+        // (kleine Randnotiz in der Detailansicht, siehe openRecipeDetail), und -
+        // falls vorhanden - deren in den Einstellungen vergebener Anzeigename
+        // (dann steht dort "creator: <Name>" statt nur der Code, siehe
+        // _creatorDisplayName). sourceRecipeId wird nur noch informativ
+        // mitgespeichert - die Bewertungs-Zuordnung selbst läuft inzwischen über
+        // den Rezeptnamen (siehe communityRatingKeyFor), damit sie auch für
+        // schon vorher gespeicherte Rezepte sofort funktioniert.
         sourceCode: discoverResultsCode || "",
-        sourceRecipeId: src.id || null
+        sourceRecipeId: src.id || null,
+        sourceName: discoverResultsGroupName || ""
     };
     if (src.nutrition) recipe.nutrition = src.nutrition;
     recipes.push(recipe);
@@ -18354,6 +18497,13 @@ function renderRecipeDetailTopBarInner(index) {
 
 function openRecipeDetail(index) {
     currentPage = "recipes";
+    // Merkt sich, WELCHES Rezept konkret offen ist (currentPage allein sagt nur
+    // "irgendwas im Rezepte-Bereich", nicht ob Liste oder Detail #x) - siehe
+    // applyRemotePayload weiter unten: dort wird das genutzt, um bei einem
+    // Live-Sync-Update (z.B. ausgeloest durch die eigene Bewertung/Veroeffent-
+    // lichung) genau DIESE Detailseite neu aufzubauen statt ungefragt zurueck
+    // zur Rezeptliste zu springen.
+    openRecipeDetailIndex = index;
     let r = recipes[index];
     let color = getActionBarColor();
     let baseServings = r.servings || 4;
@@ -18552,14 +18702,14 @@ function openRecipeDetail(index) {
 
         <div id="recipeDetailHomeContent">
         <h1 style="display:flex; align-items:center; justify-content:center; gap:10px;">${r.name}</h1>
-        ${r.sourceCode ? `<div style="text-align:center; font-size:10.5px; opacity:0.45; font-family:'Lucida Console','Courier New',monospace; margin:-8px 0 6px;">creator: sync code ${_escapeHtml(r.sourceCode)}</div>` : ""}
-        <div style="display:flex; justify-content:center; margin:-6px 0 8px;">${renderStarRating(index, r.rating, { size: 23 })}</div>
+        ${r.sourceCode ? `<div style="display:flex; align-items:center; justify-content:center; gap:4px; font-size:10.5px; opacity:0.45; font-family:'Lucida Console','Courier New',monospace; margin:-8px 0 6px;"><img src="%%FRIENDICON%%" style="width:11px; height:11px; opacity:0.85;">creator: ${_escapeHtml(_creatorDisplayName(r))}</div>` : ""}
+        <div id="recipeRatingRow" style="display:flex; justify-content:center; margin:-6px 0 8px;">${renderStarRating(index, r.rating, { size: 23 })}</div>
         ${communityRatingKeyFor(r) ? `
         <div style="max-width:420px; margin:0 auto 12px; padding:0 14px;">
-            <button onclick="toggleCommunityRatingsBox(${index})" style="width:100%; box-sizing:border-box; background:rgba(0,0,0,0.045); border:none; border-radius:12px; padding:8px 14px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace; font-size:11px; font-weight:bold; color:#777; letter-spacing:0.03em; display:flex; align-items:center; justify-content:center; gap:6px;">
-                <span>Bewertungen anderer</span><span id="communityRatingsChev" style="font-size:10px; opacity:0.7;">▾</span>
+            <button onclick="toggleCommunityRatingsBox(${index})" style="width:100%; box-sizing:border-box; background:rgba(0,0,0,0.04); border:1px solid rgba(0,0,0,0.06); border-radius:12px; padding:8px 14px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace; font-size:11px; font-weight:bold; color:${color}; letter-spacing:0.03em; display:flex; align-items:center; justify-content:center; gap:7px; transition:background 0.15s;">
+                <span style="opacity:0.85;">★</span><span>Bewertungen anderer</span><span id="communityRatingsChev" style="font-size:10px; opacity:0.6; transition:transform 0.15s;">▾</span>
             </button>
-            <div id="communityRatingsBox" data-loaded="0" style="display:none; margin-top:6px; background:white; border-radius:16px; box-shadow:0 3px 12px rgba(0,0,0,0.09); overflow:hidden;"></div>
+            <div id="communityRatingsBox" data-loaded="0" style="display:none; margin-top:7px; background:white; border-radius:16px; box-shadow:0 3px 14px rgba(0,0,0,0.1); overflow:hidden;"></div>
         </div>` : ""}
         <div style="display:flex; justify-content:center; margin:0 0 14px;">
             <button onclick="toggleRecipePublish(${index})" title="${r.published ? "Veröffentlichung zurückziehen" : "Für andere per Sync-Code sichtbar machen"}" style="background:${r.published ? "#2c8a4a" : "rgba(0,0,0,0.06)"}; color:${r.published ? "white" : "#666"}; border:none; border-radius:12px; padding:6px 15px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace; font-size:11px; font-weight:bold; letter-spacing:0.02em;">
@@ -21300,6 +21450,20 @@ let isApplyingRemoteData = false; // Schutz vor Schreib-Endlosschleifen
 let syncWriteTimer = null;    // Debounce-Timer fürs Hochladen
 let lastLocalUpdate = 0;      // Timestamp der letzten lokalen Änderung
 
+// Universeller Timeout-Wrapper fuer Firestore-Anfragen: in manchen Netzwerk-/
+// Adblocker-/Firewall-Situationen bleibt eine Anfrage haengen, OHNE dass sie
+// jemals erfolgreich zurueckkommt ODER einen Fehler wirft - ohne diesen
+// Timeout wuerde ein Ladezustand ("lädt...") dann fuer immer sichtbar bleiben.
+// Nach ms Millisekunden wird stattdessen ein Fehler geworfen, der sich wie ein
+// normaler Firestore-Fehler behandeln laesst (siehe fetchCommunityRatings/
+// fetchDiscoverableRecipes).
+function withTimeout(promise, ms) {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Zeitüberschreitung - keine Antwort erhalten")), ms))
+    ]);
+}
+
 function initFirebase() {
     if (syncDb) return syncDb;
     try {
@@ -21437,7 +21601,14 @@ function applyRemotePayload(data) {
         // NICHT navigieren – die Daten sind bereits im Hintergrund aktualisiert, der Nutzer
         // soll nur über "Zurück"-Buttons die Seite wechseln, nie automatisch "teleportiert" werden.
         if (currentPage === "shopping") { openShoppingList(); }
-        else if (currentPage === "recipes") { openRecipes(); }
+        else if (currentPage === "recipes") {
+            // War konkret eine Detailseite offen, GENAU DIE neu aufbauen statt
+            // zurueck zur Liste zu springen - das war der gemeldete Bug: jede
+            // eigene Bewertung/Veroeffentlichung loeste ein Sync-Update aus, das
+            // einen unvermittelt aus der Detailansicht zurueck in die Liste warf.
+            if (openRecipeDetailIndex !== null && recipes[openRecipeDetailIndex]) openRecipeDetail(openRecipeDetailIndex);
+            else openRecipes();
+        }
         else if (currentPage === "home") { renderHome(); }
         else if (currentPage === "history") { renderHistory(); }
         // Falls das Sync-Modal gerade offen ist (z.B. ein anderes Gerät hat den
@@ -21488,6 +21659,13 @@ function startSyncListener(code) {
     if (syncUnsubscribe) { syncUnsubscribe(); syncUnsubscribe = null; }
     syncUnsubscribe = syncDb.collection("households").doc(code).onSnapshot(
         (doc) => {
+            // Ein Snapshot mit hasPendingWrites=true ist das lokale Echo der EIGENEN,
+            // noch nicht serverseitig bestaetigten Schreibaktion - dessen Inhalt kennen
+            // wir bereits (wir haben ihn ja gerade selbst erzeugt). Das ignorieren
+            // verhindert, dass jede eigene Aenderung (z.B. eine Bewertung oder das
+            // Veroeffentlichen eines Rezepts) Sekundenbruchteile spaeter einen
+            // kompletten, unnoetigen Neuaufbau der aktuellen Seite ausloest.
+            if (doc.metadata.hasPendingWrites) return;
             if (doc.exists) {
                 applyRemotePayload(doc.data());
             }
@@ -21587,6 +21765,13 @@ function saveGroupNameEdit() {
         syncDb.collection("households").doc(syncCode).set(
             { groupName: syncGroupName, updatedAt: Date.now() }, { merge: true }
         ).catch(e => console.warn("Gruppenname konnte nicht synchronisiert werden:", e));
+        // Bereits veroeffentlichte Rezepte tragen den Gruppennamen als eigenes Feld
+        // in publishedRecipes/{syncCode} (siehe syncPublishedRecipes) - der wird
+        // NICHT automatisch aktualisiert, nur weil er sich hier aendert. Ohne diesen
+        // erneuten Upload wuerde bei Freunden, die das Rezept schon uebernommen haben
+        // oder gerade neu entdecken, weiterhin der alte/leere Name (bzw. nur der rohe
+        // Sync-Code, siehe _creatorDisplayName) angezeigt.
+        if (recipes.some(rec => rec.published)) syncPublishedRecipes();
     }
     renderSyncModal();
     showToast("Name gespeichert");
