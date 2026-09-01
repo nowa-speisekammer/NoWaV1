@@ -2297,6 +2297,14 @@ let friendSyncCodes = [];
 let mealPosts = [];
 // Gemergter Feed (eigene + Freundes-Posts) des letzten fetchAllMealFeeds()-Aufrufs
 let discoverMealFeed = [];
+// Eigenes Profilbild fuer BeMeal-Posts (base64, klein/komprimiert) - optional,
+// siehe mealAvatarEnabled + renderMealAvatarSettingsRow(). Wird beim Posten
+// (submitMealPost()) direkt in den Post eingebettet (analog zum Essensfoto),
+// damit Freunde es ohne eigenes Nutzerkonto/Profil-System sehen koennen.
+let myMealAvatar = null;
+// Ob das Profilbild-Feature ueberhaupt aktiv ist (Einstellungen-Toggle,
+// Standard AUS - nicht jeder moechte ein Foto von sich hochladen).
+let mealAvatarEnabled = false;
 // Optionale Portionsangabe in der Rezeptübersicht (String, damit ein leeres Feld möglich ist).
 // Bleibt bestehen, bis der Nutzer sie ändert oder leert ("so wie zuletzt eingestellt").
 let recipeOverviewServings = "";
@@ -3347,7 +3355,7 @@ function saveCustomData() {
             history: history.map(stripCatalogImageForSync), historyPageEnabled, statsEnabled, nutritionEnabled, nutritionOverviewFields, nutritionTrackerFields, nutritionLog, nutritionGoals, nutritionGoalModes, historyStats, historyStatsResetAt, productStats,
             hiddenProducts, shoppingList, shoppingListChecked, qtyMode, shoppingLabelsEnabled, savedShoppingLabels, pantryLabelsEnabled, savedPantryLabels, recipes,
             shoppingCategorySortEnabled, shoppingCategoryOrder,
-            friendSyncCodes, mealPosts,
+            friendSyncCodes, mealPosts, mealAvatarEnabled, myMealAvatar,
             lastLocalUpdate
         }));
     } catch (e) {
@@ -3416,6 +3424,8 @@ function loadCustomData() {
         if (data.recipes) recipes = data.recipes;
         if (Array.isArray(data.friendSyncCodes)) friendSyncCodes = data.friendSyncCodes;
         if (Array.isArray(data.mealPosts)) mealPosts = data.mealPosts;
+        if (typeof data.mealAvatarEnabled === "boolean") mealAvatarEnabled = data.mealAvatarEnabled;
+        if (typeof data.myMealAvatar === "string") myMealAvatar = data.myMealAvatar;
         // Zeitstempel der letzten lokalen Änderung wiederherstellen (überlebt Neuladen/Schließen),
         // damit ein veralteter Cloud-Snapshot beim Start diese Änderung nicht überschreiben kann.
         if (data.lastLocalUpdate) lastLocalUpdate = data.lastLocalUpdate;
@@ -5023,6 +5033,22 @@ function openSettingsMenu() {
                 </button>
             </div>
 
+            <div style="margin-top:14px; display:flex; align-items:center; gap:7px; text-align:left;">
+                <input type="checkbox" id="mealAvatarToggle" ${mealAvatarEnabled ? "checked" : ""} onchange="toggleMealAvatarSetting(this.checked)" style="flex-shrink:0; width:15px; height:15px; margin:0; cursor:pointer;">
+                <label for="mealAvatarToggle" style="font-size:11.5px; opacity:0.75; line-height:1.35; cursor:pointer;">Profilbild für BeMeal aktivieren</label>
+            </div>
+            <div style="font-size:11px; opacity:0.5; margin:4px 0 0 4px; text-align:left;">Zeigt ein Foto von dir neben deinem Namen auf deinen BeMeal-Posts (für Freunde sichtbar).</div>
+            <div id="mealAvatarRowWrap" style="display:${mealAvatarEnabled ? "flex" : "none"}; align-items:center; gap:12px; margin-top:10px;">
+                <div style="position:relative; flex-shrink:0; width:52px; height:52px;">
+                    <div id="mealAvatarPreviewWrap" style="width:52px; height:52px; border-radius:50%; overflow:hidden; background:rgba(0,0,0,0.08); display:flex; align-items:center; justify-content:center;">${renderMealAvatarPreviewInner()}</div>
+                    <label title="Foto" style="position:absolute; bottom:-2px; right:-2px; width:20px; height:20px; background:${color}; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; border:2px solid white; box-shadow:0 1px 4px rgba(0,0,0,0.25);">
+                        <img src="data:image/png;base64,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" style="width:10px; height:10px; filter:brightness(0) invert(1); object-fit:contain;">
+                        <input type="file" accept="image/*" capture="user" style="display:none;" onchange="handleMealAvatarUpload(this)">
+                    </label>
+                </div>
+                <span style="font-size:11px; opacity:0.55; text-align:left;">Tippe auf das Kamera-Symbol, um ein Bild von dir aufzunehmen.</span>
+            </div>
+
         </div>
     `, {id: "settingsMenuOverlay", closeOnBackdrop: true});
 
@@ -5077,6 +5103,40 @@ function togglePantryLabelsSetting(checked) {
     pantryLabelsEnabled = checked;
     saveCustomData();
     renderPantry();
+}
+
+// Schaltet das optionale Profilbild-Feature für BeMeal an/aus (siehe
+// Checkbox im Settings-Menü). Standardmäßig aus - ein Foto von sich selbst
+// hochzuladen ist eine bewusste Entscheidung, kein Default.
+function toggleMealAvatarSetting(checked) {
+    mealAvatarEnabled = checked;
+    saveCustomData();
+    let wrap = document.getElementById("mealAvatarRowWrap");
+    if (wrap) wrap.style.display = checked ? "flex" : "none";
+}
+
+// Kleines rundes Vorschaubild fürs Settings-Menü: eigenes Foto falls
+// vorhanden, sonst ein neutraler Platzhalter (analog zu sPhotoAvatarWrap).
+function renderMealAvatarPreviewInner() {
+    return myMealAvatar
+        ? `<img src="${myMealAvatar}" style="width:100%; height:100%; object-fit:cover;">`
+        : `<div class="no-image-placeholder-small" style="width:100%; height:100%;"></div>`;
+}
+
+// Nimmt das gewählte/aufgenommene Profilbild entgegen, komprimiert es klein
+// (wird ja bei jedem BeMeal-Post erneut mit hochgeladen, siehe submitMealPost())
+// und aktualisiert die Vorschau im Settings-Menü sofort.
+async function handleMealAvatarUpload(input) {
+    let file = input.files && input.files[0];
+    if (!file) return;
+    try {
+        myMealAvatar = await resizeImageToBase64(file, 200, 0.7);
+        saveCustomData();
+        let wrap = document.getElementById("mealAvatarPreviewWrap");
+        if (wrap) wrap.innerHTML = renderMealAvatarPreviewInner();
+    } catch (e) {
+        showToast("⚠️ Foto konnte nicht verarbeitet werden");
+    }
 }
 
 // Fügt ein Label dauerhaft zu den gespeicherten Speisekammer-Vorschlägen hinzu
@@ -8210,7 +8270,12 @@ function renderMealStarPicker(rating, readOnly) {
         let filled = s <= rating;
         let interactiveAttrs = readOnly ? "" : ` onclick="setMealComposeRating(${s})"`;
         let size = readOnly ? 15 : 28;
-        stars += `<span${interactiveAttrs} style="font-size:${size}px; line-height:1; padding:${readOnly ? "0" : "0 2px"}; color:${filled ? "#e8a622" : "rgba(0,0,0,0.18)"}; cursor:${readOnly ? "default" : "pointer"}; user-select:none;">${filled ? "★" : "☆"}</span>`;
+        // readOnly=true wird im Feed jetzt als heller Chip über dem Essensfoto
+        // angezeigt (siehe renderMealFeedList) statt auf hellem Kachel-Hintergrund
+        // - daher helle statt dunkle Farbe für die leeren Sterne, sonst
+        // verschwinden sie fast unsichtbar auf dem dunklen Overlay.
+        let emptyColor = readOnly ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.18)";
+        stars += `<span${interactiveAttrs} style="font-size:${size}px; line-height:1; padding:${readOnly ? "0" : "0 2px"}; color:${filled ? "#e8a622" : emptyColor}; cursor:${readOnly ? "default" : "pointer"}; user-select:none;">${filled ? "★" : "☆"}</span>`;
     }
     return `<span style="display:inline-flex; gap:1px;">${stars}</span>`;
 }
@@ -8235,6 +8300,10 @@ function submitMealPost() {
     let post = {
         id: generatePhotoId(), // schon vorhandener Helfer, reicht auch als Post-ID
         image: window.mealComposePhoto,
+        // Profilbild direkt mit einbetten (wie das Essensfoto selbst) statt nur
+        // zu referenzieren - Freunde haben sonst keinen Zugriff darauf, siehe
+        // mealAvatarEnabled/myMealAvatar in den Einstellungen.
+        avatar: (mealAvatarEnabled && myMealAvatar) ? myMealAvatar : null,
         rating: window.mealComposeRating || 0,
         caption: captionEl ? captionEl.value.trim().slice(0, 200) : "",
         // komplette Rezeptdaten mitschicken (nicht nur den Namen), damit
@@ -8352,14 +8421,30 @@ function renderMealFeedList() {
                 <span style="font-size:12px; font-family:'Lucida Console','Courier New',monospace; overflow-wrap:break-word; min-width:0;">${_escapeHtml(p.recipe.name)}</span>
                 ${!isMine ? `<button onclick="importMealPostRecipe('${p.id}', '${p.authorCode}')" style="background:#2c8a4a; color:white; border:none; border-radius:8px; padding:5px 10px; cursor:pointer; font-family:'Lucida Console','Courier New',monospace; font-size:10.5px; font-weight:bold; flex-shrink:0;">Rezept speichern</button>` : ""}
             </div>` : "";
+        // Avatar-Chip oben links im Bild: eigenes Foto (falls Freund/man selbst
+        // eines hinterlegt hat, siehe mealAvatarEnabled) oder ersatzweise ein
+        // Kreis mit dem ersten Buchstaben des Namens - nie ein leerer Fleck.
+        let avatarName = p.authorName || p.authorCode || "?";
+        let avatarHtml = p.avatar
+            ? `<img src="${p.avatar}" style="width:22px; height:22px; border-radius:50%; object-fit:cover; flex-shrink:0; border:1.5px solid rgba(255,255,255,0.85);">`
+            : `<div style="width:22px; height:22px; border-radius:50%; background:rgba(255,255,255,0.3); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:11px; color:white; font-weight:bold; font-family:'Lucida Console','Courier New',monospace;">${_escapeHtml(avatarName.charAt(0).toUpperCase())}</div>`;
         return `
         <div style="background:${mealTileColor(p.id)}; border-radius:16px; overflow:hidden; margin-bottom:18px; box-shadow:0 2px 10px rgba(0,0,0,0.08);">
-            <img src="${p.image}" style="width:100%; aspect-ratio:1; object-fit:cover; display:block;">
-            <div style="padding:10px 12px 12px;">
-                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; gap:8px;">
-                    <span style="font-size:12.5px; font-weight:bold; font-family:'Lucida Console','Courier New',monospace; min-width:0; overflow-wrap:break-word;">${_escapeHtml(p.authorName || p.authorCode)}${isMine ? ` <span style="opacity:0.45; font-style:italic; font-weight:normal;">(du)</span>` : ""}</span>
-                    ${renderMealStarPicker(p.rating || 0, true)}
+            <div style="position:relative; width:100%; aspect-ratio:1;">
+                <img src="${p.image}" style="width:100%; height:100%; object-fit:cover; display:block;">
+                <div style="position:absolute; top:9px; left:9px; right:9px; display:flex; align-items:center; gap:6px; max-width:calc(100% - 18px);">
+                    <div style="display:flex; align-items:center; gap:6px; background:rgba(0,0,0,0.45); border-radius:20px; padding:4px 10px 4px 4px; max-width:100%; min-width:0;">
+                        ${avatarHtml}
+                        <span style="color:white; font-size:12px; font-weight:bold; font-family:'Lucida Console','Courier New',monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;">${_escapeHtml(avatarName)}${isMine ? ` <span style="opacity:0.7; font-style:italic; font-weight:normal;">(du)</span>` : ""}</span>
+                    </div>
                 </div>
+                <div style="position:absolute; bottom:9px; left:0; right:0; display:flex; justify-content:center;">
+                    <div style="background:rgba(0,0,0,0.45); border-radius:20px; padding:3px 10px;">
+                        ${renderMealStarPicker(p.rating || 0, true)}
+                    </div>
+                </div>
+            </div>
+            <div style="padding:10px 12px 12px;">
                 ${p.caption ? `<div style="font-size:12.5px; opacity:0.75; font-family:'Lucida Console','Courier New',monospace; overflow-wrap:break-word; margin-bottom:2px;">${_escapeHtml(p.caption)}</div>` : ""}
                 ${recipeBlock}
                 ${isMine ? `<button onclick="deleteMealPost('${p.id}')" style="margin-top:8px; background:none; border:none; color:#c0392b; font-size:11px; font-family:'Lucida Console','Courier New',monospace; cursor:pointer; padding:0; text-decoration:underline;">löschen</button>` : ""}
