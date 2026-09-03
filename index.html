@@ -288,6 +288,29 @@ input[list]::-webkit-calendar-picker-indicator {
     touch-action: pan-y;
 }
 
+/* Speisekammer-Kachel-Container: display:flex+flex-wrap statt reinem
+   inline-block+text-align:center, damit der Zeilenumbruch NICHT mehr davon
+   abhängt, ob ein unsichtbarer Leerzeichen-Textknoten zwischen den
+   einzelnen .product-Divs (entsteht durch Zeilenumbruch/Einrückung im per
+   Template-String erzeugten HTML, siehe renderPantry()) noch mit in die
+   Zeile passt. Genau DAS hat den Umbruch auf schmalen Screens (z.B.
+   iPhone 12 mini, 375px) ausgelöst: der kleine Rest-Puffer, der bei
+   margin:5px (siehe .product im @media-Block unten) dieses unsichtbare
+   Leerzeichen noch "verschluckt" hat, reichte nach der Erhöhung auf
+   margin:8px nicht mehr aus - dadurch kippte die Reihe von 2 auf 1 Kachel.
+   Mit flex-wrap zählen nur noch die Kacheln selbst (inkl. ihrer margins)
+   für den Umbruch, das Leerzeichen dazwischen fällt nicht mehr ins
+   Gewicht. align-items:flex-start verhindert zusätzlich, dass
+   unterschiedlich hohe Kacheln (z.B. die "wird gegessen"-Markierung im
+   Bearbeiten-Modus, die weniger Inhalt hat als eine normale Kachel) sich
+   gegenseitig auf gleiche Höhe strecken - das würde bei display:flex ohne
+   diese Regel sonst automatisch passieren (Default: align-items:stretch). */
+#pantry {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
+}
 
 /* Mehrfachauswahl (Long-Press halten + ohne Wischen loslassen, siehe
    enterPantrySelectMode()): nicht ausgewählte Kacheln werden gedimmt, damit
