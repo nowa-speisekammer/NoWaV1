@@ -7811,12 +7811,27 @@ function togglePantryEditPending(uid, action) {
 // editPantryQty(), aber ohne den Umweg über ein Modal. uid statt Array-Index
 // (siehe Kommentar oben bei pantrySelectedUids), da pantry[] bei jedem
 // renderPantry() neu sortiert wird.
-// renderPantry()-Aufrufe hier bewusst durch refreshAfterPantryChange() ersetzt:
-// dieselben Inline-Editierfunktionen werden jetzt auch von den Kacheln im
-// showMHD()-Popup verwendet (siehe dessen eigenen "bearbeiten"-Umschalter) -
-// refreshAfterPantryChange() aktualisiert dann automatisch BEIDES (Speisekammer
-// im Hintergrund + ggf. offenes Popup), ohne offenes Popup verhält es sich
-// exakt wie das bisherige renderPantry().
+// BUGFIX: hier bewusst KEIN renderPantry()/refreshAfterPantryChange() mehr.
+// Beide waren zuvor hier verdrahtet, haben damit aber bei JEDER einzelnen
+// Chip-Auswahl im Einheiten-Swiper (unitSwiperHTML(), siehe qtyEditHtml/
+// mhdQtySwiperId) einen kompletten Neuaufbau genau der Kachel ausgelöst, an
+// der der Nutzer gerade wischt. Ging es dabei nur einen Chip weit (z.B.
+// "l" -> "ml"), war der Wisch meist schon abgeschlossen, bevor der Rebuild
+// dazwischenfunkte - deshalb fiel das lange nicht auf. Ging es aber über
+// mehrere Chips (z.B. "l"/"ml" -> "-"/"g"/"kg"), riss der Rebuild eine noch
+// laufende native Scroll-Snap-Animation (siehe initUnitSwiper()) mitten in
+// der Bewegung ab, sodass der Zielwert nie erreicht wurde - wischend liess
+// sich von "l" faktisch nie mehr als "ml" erreichen (siehe ausführlicher
+// Kommentar bei initUnitSwiper()/commitIfSettled()).
+// Ein Neu-Rendern ist an dieser Stelle auch gar nicht nötig: waehrend der
+// Bearbeitung ist ohnehin nur das Eingabefeld + der Swiper selbst sichtbar
+// (siehe window.pantryEditMode/window.mhdEditMode ? qtyEditHtml : qtyDisplay
+// weiter unten) - kein anderer sichtbarer Text zeigt in diesem Moment
+// item.qty/item.qtyUnit an. Der Swiper hält seine eigene Chip-Hervorhebung
+// bereits selbst aktuell (siehe initUnitSwiper()/paint()), das Eingabefeld
+// spiegelt ohnehin schon den zuletzt eingetippten Wert. saveCustomData()
+// reicht daher aus - die naechste ohnehin fällige renderPantry() (z.B. beim
+// Verlassen des Bearbeiten-Modus) übernimmt die Änderung ganz normal.
 function setPantryQtyInline(uid, val) {
     let idx = pantry.findIndex(p => p.uid === uid);
     if (idx === -1) return;
@@ -7824,7 +7839,6 @@ function setPantryQtyInline(uid, val) {
     if (val) pantry[idx].qty = val;
     else { delete pantry[idx].qty; delete pantry[idx].qtyUnit; }
     saveCustomData();
-    renderPantry();
 }
 
 function setPantryUnitInline(uid, val) {
@@ -7832,7 +7846,6 @@ function setPantryUnitInline(uid, val) {
     if (idx === -1 || !pantry[idx].qty) return;
     pantry[idx].qtyUnit = val;
     saveCustomData();
-    renderPantry();
 }
 
 // MHD direkt aus dem Inline-Datums-Pill der Kachel übernehmen - gleiches
