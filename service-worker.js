@@ -1,7 +1,7 @@
 // Automatisch generiert von generate_app.py - nicht manuell bearbeiten.
 // Bei jedem Skriptlauf aendert sich CACHE_VERSION, wodurch alte Caches
 // beim naechsten Seitenaufruf automatisch ersetzt werden.
-const CACHE_VERSION = "20260906-030801";
+const CACHE_VERSION = "20260906-151124";
 const CACHE_NAME = "nowa-cache-" + CACHE_VERSION;
 
 // Alles, was fuer die Offline-Nutzung vorab gecacht werden soll.
@@ -119,6 +119,35 @@ self.addEventListener("activate", (event) => {
 //   trotzdem aktualisiert, falls online eine neuere Version verfuegbar ist.
 self.addEventListener("fetch", (event) => {
     const req = event.request;
+
+    // Web-Share-Target: Android schickt hier per POST das, was aus einer
+    // anderen App (z.B. TikTok) "geteilt" wurde - inkl. der ECHTEN Videodatei,
+    // falls die Quell-App eine mitgeschickt hat (TikTok tut das beim Teilen
+    // an Drittanbieter-Apps automatisch). Da es keinen echten Server gibt,
+    // der diese POST-Anfrage sonst beantworten würde, fangen wir sie hier ab,
+    // legen Video + Text/Link kurz in einem eigenen Cache ab und leiten dann
+    // per normalem GET auf die App weiter, die das beim Start abholt (siehe
+    // checkForSharedVideoOnLoad() im Haupt-Skript).
+    if (req.method === "POST") {
+        event.respondWith((async () => {
+            try {
+                const formData = await req.clone().formData();
+                const cache = await caches.open("nowa-share-target");
+                const video = formData.get("sharedVideo");
+                if (video && video.size > 0) {
+                    await cache.put("shared-video", new Response(video, { headers: { "Content-Type": video.type || "video/mp4" } }));
+                }
+                const sharedUrl = formData.get("sharedUrl") || "";
+                const sharedText = formData.get("sharedText") || "";
+                await cache.put("shared-meta", new Response(JSON.stringify({ url: sharedUrl, text: sharedText })));
+            } catch (err) {
+                console.error("Share-Target: Verarbeiten der geteilten Daten fehlgeschlagen:", err);
+            }
+            return Response.redirect("./index.html?shared=1", 303);
+        })());
+        return;
+    }
+
     if (req.method !== "GET") return;
 
     if (req.mode === "navigate") {

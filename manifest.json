@@ -8,6 +8,24 @@
   "orientation": "portrait",
   "background_color": "#dbdcc2",
   "theme_color": "#ffffff",
+  "share_target": {
+    "action": "./index.html",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "sharedTitle",
+      "text": "sharedText",
+      "url": "sharedUrl",
+      "files": [
+        {
+          "name": "sharedVideo",
+          "accept": [
+            "video/*"
+          ]
+        }
+      ]
+    }
+  },
   "icons": [
     {
       "src": "icons/icon-16.png",
