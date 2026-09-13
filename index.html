@@ -4982,8 +4982,23 @@ function unitSwiperHTML(id, selected, color, onchange, extraClass, extraStyle) {
     let chips = UNIT_SWIPER_OPTIONS.map(o =>
         `<div class="unit-swiper-chip" data-value="${o.value}">${o.label}</div>`
     ).join("");
+    // "visibility:hidden" beim ersten Rendern: der Track startet immer bei
+    // scrollLeft:0 (also optisch auf der ERSTEN Einheit, z.B. "l"), bevor
+    // initUnitSwiper() ihn programmatisch auf die tatsaechlich gewaehlte
+    // Einheit scrollt (siehe setValue() dort). Auf dem Handy (insbesondere
+    // bei "-webkit-overflow-scrolling: touch", siehe .unit-swiper-track)
+    // rendert/compositet der Browser diesen scrollbaren Bereich teils schon
+    // EINEN Frame, bevor das programmatische scrollTo() dort ankommt - das
+    // sah als kurzes "Flackern" der Einheit aus (z.B. "l" blitzt kurz zur
+    // ersten Chip-Position auf, bevor korrekt zu "l" gesprungen wird),
+    // reproduzierbar bei jedem Neu-Rendern der Kachel (z.B. jeder Tipp/+/-
+    // an der Menge in "Bestand anpassen 3", das ueber _cookRenderTileList
+    // die ganze Kachel samt Swiper neu aufbaut). initUnitSwiper() macht den
+    // Swiper erst per doppeltem requestAnimationFrame wieder sichtbar,
+    // NACHDEM die korrekte Scroll-Position sicher gesetzt ist - der Nutzer
+    // sieht dadurch nie mehr die falsche Zwischenposition.
     return `
-        <div class="unit-swiper ${extraClass || ""}" style="--swiper-color:${color || "#6f87b3"};${extraStyle || ""}">
+        <div class="unit-swiper ${extraClass || ""}" style="--swiper-color:${color || "#6f87b3"};${extraStyle || ""}visibility:hidden;">
             <div class="unit-swiper-highlight"></div>
             <div class="unit-swiper-track" id="${id}_track">${chips}</div>
         </div>
@@ -5001,6 +5016,10 @@ function initUnitSwiper(id) {
     let chips = Array.from(track.querySelectorAll(".unit-swiper-chip"));
     if (!chips.length) return null;
     let chipW = chips[0].getBoundingClientRect().width || 42;
+    // Wrapper-Element mit dem "visibility:hidden" aus unitSwiperHTML() (siehe
+    // Kommentar dort) - wird ganz unten erst nach dem Positionieren wieder
+    // sichtbar gemacht.
+    let wrap = track.closest(".unit-swiper");
 
     function indexForValue(v) {
         let idx = chips.findIndex(c => c.dataset.value === (v || ""));
@@ -5153,6 +5172,19 @@ function initUnitSwiper(id) {
     });
 
     setValue(hidden.value, false, true);
+    // Doppeltes requestAnimationFrame statt direktem Einblenden: das erste rAF
+    // laeuft VOR dem naechsten Browser-Repaint, garantiert also noch nicht,
+    // dass der eben per scrollTo() gesetzte Wert auch tatsaechlich schon
+    // gerendert/compositet wurde (genau dieses Timing-Fenster war die
+    // Ursache des Flackerns, siehe Kommentar in unitSwiperHTML()). Das
+    // zweite rAF laeuft dagegen erst NACH diesem Repaint - der Swiper wird
+    // also garantiert erst sichtbar, wenn die korrekte Einheit auch
+    // tatsaechlich an der richtigen Stelle steht.
+    if (wrap) {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => { wrap.style.visibility = ""; });
+        });
+    }
     return { setValue: setValue };
 }
 
