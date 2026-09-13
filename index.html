@@ -2392,6 +2392,40 @@ input[type="number"]::-webkit-inner-spin-button {
     transform: scale(1.12);
 }
 
+/* ===== "Bestand anpassen 3": eigenstaendiger, NICHT scroll-basierter
+   Unit-Swiper (siehe unitSwiperHTML3()/initUnitSwiper3() weiter unten). Optisch
+   1:1 identisch zum normalen .unit-swiper (nutzt dieselben Groessen-/Farb-
+   Variablen und .unit-swiper-chip-Regeln oben), NUR die Positionierung der
+   Chip-Reihe passiert hier per CSS-"transform" auf einem inneren <div>
+   (.unit-swiper-track-inner) statt per echtem nativen Scrollen
+   (scrollLeft/scrollTo) - dadurch entfaellt die komplette Klasse von Race-
+   Conditions rund um asynchrones Scroll-Timing, die beim alten .unit-swiper
+   auf dem Handy sichtbares Flackern verursachen konnte (siehe ausfuehrliche
+   Kommentare bei initUnitSwiper() oben). ".v3swipe" ueberschreibt dafuer nur
+   das Scroll-/Touch-Verhalten des Tracks; alle Groessen-/Farb-Modifier-
+   Klassen (z.B. .on-tile, .compact-xs) bleiben unveraendert nutzbar. */
+.unit-swiper.v3swipe .unit-swiper-highlight {
+    /* Wird bei "l"/"kg" (Randanschlag statt Zentrierung, siehe
+       _unitSwiper3Targets()) per JS an eine andere "left"-Position bewegt -
+       die Transition sorgt dafuer, dass sie dabei sanft mitgleitet statt zu
+       springen. Betrifft nur ".v3swipe" (Bestand anpassen 3); der normale,
+       immer zentrierte Swiper aendert "left" nie, daher keine Auswirkung
+       dort. */
+    transition: left 0.22s cubic-bezier(.2,.7,.3,1);
+}
+.unit-swiper.v3swipe .unit-swiper-track {
+    overflow: hidden;
+    scroll-snap-type: none;
+    cursor: grab;
+    padding: 0; /* Positionierung erfolgt komplett per JS-Transform auf .unit-swiper-track-inner, siehe initUnitSwiper3() - die geerbte Track-Padding von oben wuerde sonst zu einer doppelten Verschiebung fuehren */
+    touch-action: none; /* Verschieben wird komplett von initUnitSwiper3() selbst uebernommen, kein natives Scrollen mehr noetig */
+}
+.unit-swiper.v3swipe .unit-swiper-track:active { cursor: grabbing; }
+.unit-swiper-track-inner {
+    display: flex;
+    height: 100%;
+}
+
 .ai-recognition-tile input::placeholder,
 .ai-recognition-tile textarea::placeholder {
     color: rgba(255,255,255,0.62);
@@ -5185,6 +5219,272 @@ function initUnitSwiper(id) {
             requestAnimationFrame(() => { wrap.style.visibility = ""; });
         });
     }
+    return { setValue: setValue };
+}
+
+// ============================================================
+// "BESTAND ANPASSEN 3" - eigener, NICHT scroll-basierter Unit-Swiper
+// (siehe .v3swipe-CSS oben). Wortwoertlich dieselbe Optik wie
+// unitSwiperHTML()/initUnitSwiper() oben (identische Chips, Farben,
+// Groessen-Klassen), aber komplett anderer Mechanismus: statt eines echten
+// scrollbaren Containers (scrollLeft/scrollTo(), scroll-snap, Warten auf ein
+// "eingerastetes" Scroll-Ende) wird die Chip-Reihe hier in einem simplen,
+// NICHT scrollenden <div> gehalten und ausschliesslich per CSS
+// "transform: translateX(...)" verschoben - komplett synchron durch eigenen
+// JS-Code gesteuert. Dadurch entfaellt die gesamte Klasse von Timing-/
+// Race-Problemen, die beim alten Swiper das Flackern auf dem Handy
+// verursachte: es gibt keine asynchrone Browser-Scroll-Animation mehr, die
+// erst noch "einrasten" muesste, bevor der neue Wert feststeht - der
+// Ziel-Chip (und damit der Wert) ist in jedem Moment exakt das, was der
+// eigene JS-Code gerade gesetzt hat, nichts wird nachtraeglich per
+// scrollLeft ausgelesen/korrigiert.
+// Nur fuer "Bestand anpassen 3" (window.cookReviewV3Mode) genutzt - siehe
+// Aufrufstelle in _cookMiniTileEditable3() bzw. initUnitSwiper3()-Aufruf in
+// _cookRenderTileList(). Betrifft NICHT "Bestand anpassen"/"Bestand aendern
+// 2" oder sonstige Stellen im Rest der App, die weiterhin den alten
+// unitSwiperHTML()/initUnitSwiper() nutzen.
+// Randabstand (px) fuer die aeussersten Einheiten ("l" ganz links, "kg" ganz
+// rechts) in "Bestand anpassen 3": statt wie die mittleren Einheiten zentriert
+// zu werden, ruecken diese beiden bewusst an den Rand des Swipers, so dass
+// die jeweils benachbarte Einheit ("ml" bzw. "g") noch ein Stueck sichtbar
+// bleibt und sich sauber direkt antippen laesst (siehe Wunsch: von "l"/"kg"
+// aus soll man den Nachbarn ohne blindes Wischen treffen).
+const UNIT_SWIPER3_EDGE_GAP = 4;
+
+// Berechnet fuer jede der 5 UNIT_SWIPER_OPTIONS sowohl die Ziel-Transform-
+// Position (in px, fuer "translateX" auf .unit-swiper-track-inner) als auch
+// die passende Position der Auswahl-Markierung (.unit-swiper-highlight) -
+// eine feste, vorab bekannte Liste statt einer einzelnen Formel: die drei
+// mittleren Einheiten ("ml", "—", "g") werden wie gewohnt im Swiper
+// zentriert, die beiden aeusseren ("l"/"kg", siehe UNIT_SWIPER3_EDGE_GAP
+// oben) werden stattdessen an den linken/rechten Rand gerueckt - die
+// Markierung wandert dabei mit an dieselbe Stelle, statt (wie beim alten,
+// immer zentrierten Swiper) fix in der Mitte stehenzubleiben, wo dann keine
+// aktive Einheit mehr sichtbar waere. Sowohl unitSwiperHTML3() (Start-
+// Position beim ersten Rendern) als auch initUnitSwiper3() (Ziel beim
+// Antippen/Wischen) nutzen exakt dieselbe Funktion, damit niemals ein
+// Sprung zwischen "erst gerendert" und "danach per JS uebernommen" entsteht.
+function _unitSwiper3Targets(chipWidthPx, trackWidthPx) {
+    let n = UNIT_SWIPER_OPTIONS.length;
+    let centerLeft = (trackWidthPx - chipWidthPx) / 2;
+    let targets = [];
+    for (let i = 0; i < n; i++) {
+        let desiredLeft;
+        if (i === 0) desiredLeft = UNIT_SWIPER3_EDGE_GAP;
+        else if (i === n - 1) desiredLeft = trackWidthPx - UNIT_SWIPER3_EDGE_GAP - chipWidthPx;
+        else desiredLeft = centerLeft;
+        targets.push({ offset: desiredLeft - i * chipWidthPx, highlightLeft: desiredLeft + chipWidthPx / 2 });
+    }
+    return targets;
+}
+
+// Eigenstaendiger, NICHT scroll-basierter Nachbau des Einheiten-Swipers, exklusiv
+// fuer "Bestand anpassen 3" (siehe initUnitSwiper3() weiter unten) - behebt das
+// dortige starke Flackern beim Einheiten-Wechsel auf dem Handy. Ursache beim
+// alten, gemeinsam genutzten unitSwiperHTML()/initUnitSwiper() oben (identische Chips, Farben,
+// Groessen-Klassen), aber komplett anderer Mechanismus: statt eines echten
+// scrollbaren Containers (scrollLeft/scrollTo(), scroll-snap, Warten auf ein
+// "eingerastetes" Scroll-Ende) wird die Chip-Reihe hier in einem simplen,
+// NICHT scrollenden <div> gehalten und ausschliesslich per CSS
+// "transform: translateX(...)" verschoben - komplett synchron durch eigenen
+// JS-Code gesteuert. Dadurch entfaellt die gesamte Klasse von Timing-/
+// Race-Problemen, die beim alten Swiper das Flackern auf dem Handy
+// verursachte: es gibt keine asynchrone Browser-Scroll-Animation mehr, die
+// erst noch "einrasten" muesste, bevor der neue Wert feststeht - der
+// Ziel-Chip (und damit der Wert) ist in jedem Moment exakt das, was der
+// eigene JS-Code gerade gesetzt hat, nichts wird nachtraeglich per
+// scrollLeft ausgelesen/korrigiert.
+// Nur fuer "Bestand anpassen 3" (window.cookReviewV3Mode) genutzt - siehe
+// Aufrufstelle in _cookMiniTileEditable3() bzw. initUnitSwiper3()-Aufruf in
+// _cookRenderTileList(). Betrifft NICHT "Bestand anpassen"/"Bestand aendern
+// 2" oder sonstige Stellen im Rest der App, die weiterhin den alten
+// unitSwiperHTML()/initUnitSwiper() nutzen.
+function unitSwiperHTML3(id, selected, color, onchange, extraClass, extraStyle, chipWidthPx, trackWidthPx) {
+    selected = selected || "";
+    // Defaults = Groessen der aktuell einzig hier verwendeten Klasse
+    // ".compact-xs" (siehe CSS) - als explizite Parameter statt Auslesen aus
+    // dem DOM/CSS, damit die Start-Position bereits BEIM STRING-AUFBAU (also
+    // bevor ueberhaupt irgendetwas im DOM haengt) exakt feststeht.
+    chipWidthPx = chipWidthPx || 26;
+    trackWidthPx = trackWidthPx || 78;
+    let idx = UNIT_SWIPER_OPTIONS.findIndex(o => o.value === selected);
+    if (idx < 0) idx = 0;
+    // "active" wird hier direkt mit ins Markup geschrieben (nicht erst
+    // nachtraeglich per JS gesetzt wie im alten paint()) - der korrekt
+    // markierte Chip ist dadurch von der allerersten Sekunde an im DOM
+    // vorhanden, es gibt keinen Zwischenzustand "noch kein Chip aktiv".
+    let chips = UNIT_SWIPER_OPTIONS.map((o, i) =>
+        `<div class="unit-swiper-chip${i === idx ? " active" : ""}" data-value="${o.value}">${o.label}</div>`
+    ).join("");
+    // Start-Transform wird direkt hier, synchron beim Erzeugen des HTML-
+    // Strings, exakt berechnet und inline gesetzt - im Gegensatz zum alten
+    // Swiper (unitSwiperHTML(): erst "visibility:hidden" rendern, dann per
+    // scrollTo() nachtraeglich korrigieren, siehe Kommentar dort) gibt es
+    // hier nie eine sichtbare "falsche" Zwischenposition, die erst per
+    // Doppel-rAF-Trick uebertuencht werden muesste. Nutzt dieselbe
+    // _unitSwiper3Targets()-Liste wie initUnitSwiper3(), inkl. Rand-
+    // Anschlag fuer "l"/"kg" (siehe UNIT_SWIPER3_EDGE_GAP oben) - die
+    // Auswahl-Markierung (.unit-swiper-highlight) bekommt dieselbe Position
+    // direkt mit (per "left", statt wie beim alten Swiper fix zentriert),
+    // damit sie bei "l"/"kg" tatsaechlich am Rand ueber der aktiven Einheit
+    // sitzt statt leer in der Mitte.
+    let target = _unitSwiper3Targets(chipWidthPx, trackWidthPx)[idx];
+    return `
+        <div class="unit-swiper v3swipe ${extraClass || ""}" style="--swiper-color:${color || "#6f87b3"};${extraStyle || ""}">
+            <div class="unit-swiper-highlight" id="${id}_hl" style="left:${target.highlightLeft}px;"></div>
+            <div class="unit-swiper-track" id="${id}_track">
+                <div class="unit-swiper-track-inner" id="${id}_inner" style="transform:translateX(${target.offset}px);">${chips}</div>
+            </div>
+        </div>
+        <input type="hidden" id="${id}" value="${selected}" data-chipw="${chipWidthPx}" data-trackw="${trackWidthPx}" ${onchange ? `onchange="${onchange}"` : ""}>
+    `;
+}
+
+// Muss nach dem Einfuegen der unitSwiperHTML3()-Markup ins DOM aufgerufen
+// werden (gleiches Muster wie initUnitSwiper() oben). Bindet Tap/Wisch-
+// Bedienung (Touch UND Maus einheitlich per Pointer-Events) auf die
+// Chip-Reihe - OHNE natives Scrollen.
+function initUnitSwiper3(id) {
+    let track = document.getElementById(id + "_track");
+    let inner = document.getElementById(id + "_inner");
+    let hidden = document.getElementById(id);
+    let highlight = document.getElementById(id + "_hl");
+    if (!track || !inner || !hidden) return null;
+    let chips = Array.from(inner.querySelectorAll(".unit-swiper-chip"));
+    if (!chips.length) return null;
+    let chipW = parseFloat(hidden.dataset.chipw) || (chips[0].getBoundingClientRect().width || 26);
+    let trackW = parseFloat(hidden.dataset.trackw) || (track.getBoundingClientRect().width || 78);
+    // Feste Ziel-Positionen je Chip-Index (siehe _unitSwiper3Targets() oben) -
+    // die aeusseren Chips ("l"/"kg") liegen dabei NICHT im gleichen, gleich-
+    // maessigen chipW-Abstand wie die mittleren, da sie an den Rand statt in
+    // die Mitte ruecken. "naechstgelegener Chip" (siehe endDrag() unten)
+    // wird deshalb per Distanzvergleich gegen diese Liste bestimmt, nicht per
+    // simpler Division durch chipW.
+    let targets = _unitSwiper3Targets(chipW, trackW);
+    let minOffset = targets[targets.length - 1].offset;
+    let maxOffset = targets[0].offset;
+
+    function indexForValue(v) {
+        let idx = chips.findIndex(c => c.dataset.value === (v || ""));
+        return idx >= 0 ? idx : 0;
+    }
+    function nearestIndexForOffset(o) {
+        let best = 0, bestDist = Infinity;
+        targets.forEach((t, i) => {
+            let d = Math.abs(t.offset - o);
+            if (d < bestDist) { bestDist = d; best = i; }
+        });
+        return best;
+    }
+    function paint(idx) { chips.forEach((c, i) => c.classList.toggle("active", i === idx)); }
+
+    // "offset" haelt den aktuell gesetzten transform-Wert (in px) - einzige
+    // Quelle der Wahrheit fuer die aktuelle Position, es wird nirgends mehr
+    // ein scrollLeft o.ae. aus dem DOM zurueckgelesen.
+    let currentIdx = indexForValue(hidden.value);
+    let offset = targets[currentIdx].offset;
+
+    // smooth=true: sanfter, "magnetischer" Uebergang (z.B. nach Tap/Wisch-
+    // Ende - fuehlt sich wie ein Einrasten an). smooth=false: sofort ohne
+    // Animation (z.B. beim Ziehen selbst, jeden Frame neu). Die Markierung
+    // (.unit-swiper-highlight) wandert dabei synchron mit an dieselbe
+    // Position (siehe highlightLeft in _unitSwiper3Targets()) - sonst
+    // bliebe sie bei "l"/"kg" (die jetzt an den Rand ruecken) leer in der
+    // Mitte stehen, statt die aktive Einheit zu markieren.
+    function animateTo(idx, smooth) {
+        idx = Math.max(0, Math.min(chips.length - 1, idx));
+        let t = targets[idx];
+        offset = t.offset;
+        let transition = smooth ? "transform 0.22s cubic-bezier(.2,.7,.3,1)" : "none";
+        inner.style.transition = transition;
+        inner.style.transform = `translateX(${offset}px)`;
+        if (highlight) {
+            highlight.style.transition = smooth ? "left 0.22s cubic-bezier(.2,.7,.3,1)" : "none";
+            highlight.style.left = `${t.highlightLeft}px`;
+        }
+        paint(idx);
+        currentIdx = idx;
+    }
+
+    // silent=true unterdrueckt das "change"-Event (z.B. beim rein optischen
+    // Sync-Aufruf ganz unten) - gleicher Grund wie bei initUnitSwiper() oben:
+    // sonst wuerde ein onchange-Handler, der seinerseits neu rendert, sofort
+    // eine Endlosschleife auesloesen.
+    function commit(idx, silent) {
+        let val = chips[idx].dataset.value;
+        if (val === hidden.value) return;
+        hidden.value = val;
+        if (!silent) hidden.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    function setValue(v, smooth, silent) {
+        let idx = indexForValue(v);
+        animateTo(idx, smooth);
+        commit(idx, silent);
+    }
+
+    // Tap UND Wisch-Geste laufen ueber dieselben drei Pointer-Events (deckt
+    // Touch auf dem Handy und Maus auf dem Desktop einheitlich ab, kein
+    // separates touchstart/touchend + Klick-Handler-Duplikat mehr noetig wie
+    // beim alten Swiper). touch-action:none in der CSS (.v3swipe) sorgt
+    // dafuer, dass der Browser den Finger nicht gleichzeitig fuers native
+    // Seiten-Scrollen beansprucht.
+    // BUGFIX: der angetippte Chip (fuer den reinen Tap-Fall, siehe endDrag()
+    // unten) wird HIER in pointerdown gemerkt, statt erst in endDrag() ueber
+    // e.target zu ermitteln - track.setPointerCapture() (siehe unten) sorgt
+    // naemlich dafuer, dass der Browser ALLE folgenden Pointer-Events
+    // (inkl. "pointerup") auf den Track selbst umbiegt ("event retargeting"):
+    // e.target war beim Antippen einer benachbarten Einheit dadurch immer
+    // der Track statt des angetippten Chips, ".closest()" fand darüber
+    // nie den Chip - ein Antippen einer Nachbar-Einheit passierte optisch
+    // gar nichts.
+    let drag = null;
+    track.addEventListener("pointerdown", function(e) {
+        let tapChip = e.target && e.target.closest ? e.target.closest(".unit-swiper-chip") : null;
+        drag = { startX: e.clientX, startOffset: offset, moved: false, pointerId: e.pointerId, tapChip: tapChip };
+        inner.style.transition = "none";
+        try { track.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    track.addEventListener("pointermove", function(e) {
+        if (!drag) return;
+        let dx = e.clientX - drag.startX;
+        if (Math.abs(dx) > 3) drag.moved = true;
+        if (!drag.moved) return;
+        offset = Math.max(minOffset, Math.min(maxOffset, drag.startOffset + dx));
+        inner.style.transform = `translateX(${offset}px)`;
+    });
+    function endDrag(e) {
+        if (!drag) return;
+        let wasMoved = drag.moved;
+        let tapChip = drag.tapChip;
+        let pointerId = drag.pointerId;
+        drag = null;
+        try { track.releasePointerCapture(pointerId); } catch (err) {}
+        if (wasMoved) {
+            // Geschwungen/gewischt: magnetisch zum naechstgelegenen Chip
+            // einrasten (siehe nearestIndexForOffset() oben).
+            let idx = nearestIndexForOffset(offset);
+            animateTo(idx, true);
+            commit(idx);
+        } else {
+            // Reiner Tap ohne Wischen: direkt den angetippten Chip anwaehlen
+            // (fällt der Tap z.B. auf die Luecke zwischen Chips, bleibt der
+            // bisherige Wert einfach unveraendert).
+            let idx = tapChip ? chips.indexOf(tapChip) : currentIdx;
+            animateTo(idx, true);
+            commit(idx);
+        }
+    }
+    track.addEventListener("pointerup", endDrag);
+    track.addEventListener("pointercancel", function() { drag = null; });
+
+    // Rein optischer Sync-Aufruf (silent) - stellt sicher, dass Transform und
+    // "active"-Klasse exakt zum aktuellen hidden.value passen, falls sich der
+    // Wert seit dem Server-seitigen HTML-Aufbau (unitSwiperHTML3()) doch noch
+    // geaendert haben sollte. Da unitSwiperHTML3() die Start-Position bereits
+    // korrekt inline setzt, ist dieser Aufruf im Normalfall ein reines No-op.
+    animateTo(currentIdx, false);
+
     return { setValue: setValue };
 }
 
@@ -25606,7 +25906,7 @@ function _cookMiniTileEditable3(rowId, idx, item) {
                     ${qtyMinusBtn}
                     <input id="cookQty_${rowId}_${idx}" type="number" min="0" step="any" value="${displayQty}" data-unit="${displayUnit}" oninput="_cookSetQtyValue('${rowId}', ${idx})" onblur="_cookRenderTileList('${rowId}')" style="flex:1; min-width:0; height:30px; box-sizing:border-box; text-align:center; font-size:11px; ${fieldStyle} padding:0 1px;">
                     ${qtyPlusBtn}
-                    ${unitSwiperHTML(`cookUnit_${rowId}_${idx}`, displayUnit, catColor, `_cookSetUnitOnly('${rowId}', ${idx}); _cookRenderTileList('${rowId}')`, "on-tile compact-xs")}
+                    ${unitSwiperHTML3(`cookUnit_${rowId}_${idx}`, displayUnit, catColor, `_cookSetUnitOnly('${rowId}', ${idx}); _cookRenderTileList('${rowId}')`, "on-tile compact-xs", null, 26, 78)}
                 </div>
             </div>
         </div>
@@ -26968,7 +27268,21 @@ function _cookRenderTileList(rowId) {
         </div>` : "";
 
     container.innerHTML = `<div style="display:flex; flex-direction:column; align-items:center; gap:14px;">${mismatchNote}${pairsHtml}</div>${navHtml}`;
-    initUnitSwiper(entry.unknownQty ? `cookUnknownUnit_${rowId}_${entry.idx}` : `cookUnit_${rowId}_${entry.idx}`);
+    // "Bestand anpassen 3" (window.cookReviewV3Mode) nutzt fuer den
+    // Einheiten-Swiper des bestehenden Tiles den neuen, nicht scroll-
+    // basierten initUnitSwiper3() (siehe dort) statt des alten initUnitSwiper()
+    // - behebt das dort auf dem Handy sichtbare Flackern beim Einheiten-
+    // Wechsel. Betrifft NUR diesen einen Swiper; die "unbekannte Menge"-
+    // Variante (cookUnknownUnit_, hat ohnehin keinen onchange-Handler, siehe
+    // dort) sowie "Bestand anpassen"/"Bestand aendern 2" bleiben unveraendert
+    // beim alten Swiper.
+    if (entry.unknownQty) {
+        initUnitSwiper(`cookUnknownUnit_${rowId}_${entry.idx}`);
+    } else if (window.cookReviewV3Mode) {
+        initUnitSwiper3(`cookUnit_${rowId}_${entry.idx}`);
+    } else {
+        initUnitSwiper(`cookUnit_${rowId}_${entry.idx}`);
+    }
     }, 0);
 }
 
