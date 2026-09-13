@@ -26882,6 +26882,22 @@ function _cookToggleAddTile(rowId) {
 // Tiles blättern lässt - ohne Extra-Klick zum "Reinzoomen" und ohne
 // separaten Rückweg, da es keine zweite Ansicht mehr gibt.
 function _cookRenderTileList(rowId) {
+    // WICHTIG (Mobile-Klick-Bug): Wird direkt aus einem "blur"-Handler heraus
+    // aufgerufen (siehe onblur="_cookRenderTileList(...)" am Mengenfeld
+    // oben) - auf dem Handy feuert "blur" IMMER VOR dem "click" des als
+    // naechstes angetippten Elements (z.B. MHD-Feld, Zustands-Chip, +/-
+    // Stepper eines ANDEREN Tiles derselben Kachel). Ein SOFORTIGER
+    // innerHTML-Ersatz hier zerstoert dessen DOM-Knoten dadurch noch WAEHREND
+    // der Browser den bereits laufenden Tap verarbeitet - der Klick verpufft
+    // dann wirkungslos, weil sein Ziel nicht mehr existiert. Sichtbar war das
+    // als "Button reagiert (Tap-Highlight kommt), aber es passiert nichts -
+    // erst nach vielen Tipps geht's plötzlich". Ein setTimeout(..., 0) schiebt
+    // den eigentlichen Rerender einen Tick nach hinten: der bereits
+    // angestossene Klick auf dem NOCH vorhandenen alten Button wird dadurch
+    // zuerst fertig verarbeitet, bevor die Kachel neu aufgebaut wird. Kein
+    // Aufrufer verlaesst sich auf ein synchrones Fertigwerden dieser Funktion
+    // (alle rufen sie nur als letzten Schritt auf), daher unbedenklich.
+    setTimeout(() => {
     let row = (window.cookDraft || []).find(r => r.id === rowId);
     let container = document.getElementById("cookTiles_" + rowId);
     if (!row || !container || !row._tileMap) return;
@@ -26916,6 +26932,7 @@ function _cookRenderTileList(rowId) {
 
     container.innerHTML = `<div style="display:flex; flex-direction:column; align-items:center; gap:14px;">${mismatchNote}${pairsHtml}</div>${navHtml}`;
     initUnitSwiper(entry.unknownQty ? `cookUnknownUnit_${rowId}_${entry.idx}` : `cookUnit_${rowId}_${entry.idx}`);
+    }, 0);
 }
 
 // Wechselt um `delta` Positionen weiter (Pfeiltasten, siehe _cookRenderTileList).
