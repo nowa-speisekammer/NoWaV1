@@ -8407,19 +8407,174 @@ let MHD_POPUP_MONTH_NAMES = ["Januar", "Februar", "März", "April", "Mai", "Juni
 // Kreuz im Zifferblock (das nur die Eingabe leert, siehe _mhdPopupClear()).
 // Ein Tippen auf den Hintergrund (closeOnBackdrop) übernimmt wie der
 // Ecken-Haken die aktuelle Eingabe, statt sie kommentarlos zu verwerfen.
+// Macht das MHD-Popup wiederverwendbar für einen zweiten Kontext: nicht nur
+// echte Speisekammer-Items (mode:"pantry", per uid), sondern auch die noch
+// unbestätigten "Nachher"-Kacheln in "Bestand anpassen 3" (mode:"cook", per
+// rowId+idx) - dort liegt das MHD nur als Entwurf in window.cookTileMhd/
+// window.cookTileNoExpiry und wird erst beim Bestätigen des Rezepts wirklich
+// angewendet (siehe _confirmCookRecipe), nicht sofort wie in der echten
+// Speisekammer. Die folgenden Hilfsfunktionen kapseln genau diesen
+// Unterschied, damit der ganze Rest des Popups (Ziffernblock, Kalender,
+// Chips, ±Tage, Farb-Vorschau, Reset) unverändert bleibt.
+function _mhdPopupCookBaseItem(s) {
+    let row = (window.cookDraft || []).find(r => r.id === s.cookRowId);
+    if (!row || !row._tileMap) return null;
+    let entry = row._tileMap.find(t => t.idx === s.cookIdx);
+    return entry ? entry.item : null;
+}
+
+// Pendant zu _mhdPopupCookBaseItem, aber fuer eine noch gar nicht im Bestand
+// vorhandene "Nachher"-Kachel (siehe _cookEmptyPairHtml/mode:"cooknew") -
+// dort gibt es kein echtes Speisekammer-Item als Grundlage, nur die
+// aktivierte Entwurfs-Zeile selbst (window.cookRowAdding).
+function _mhdPopupCookNewRowActive(s) {
+    let row = (window.cookDraft || []).find(r => r.id === s.cookRowId);
+    if (!row) return null;
+    return (window.cookRowAdding && window.cookRowAdding[s.cookRowId]) ? row : null;
+}
+
+function _mhdPopupTargetExists(s) {
+    if (!s) return false;
+    if (s.mode === "cook") return !!_mhdPopupCookBaseItem(s);
+    if (s.mode === "cooknew") return !!_mhdPopupCookNewRowActive(s);
+    return !!pantry.find(p => p.uid === s.uid);
+}
+
+function _mhdPopupCurrentNoExpiry(s) {
+    if (s.mode === "cook") return !!((window.cookTileNoExpiry[s.cookRowId] || {})[s.cookIdx]);
+    if (s.mode === "cooknew") return !!((window.cookNewNoExpiry || {})[s.cookRowId]);
+    let item = pantry.find(p => p.uid === s.uid);
+    return !!(item && item.noExpiry);
+}
+
+// Restlaufzeit des aktuell GESPEICHERTEN (nicht des gerade nur getippten,
+// noch nicht committeten) Zustands - für Popup-Hintergrundfarbe & Kachel.
+// Liefert NaN, wenn (nur im "cooknew"-Fall möglich) noch gar keine MHD-
+// Entscheidung getroffen wurde (weder Datum noch ∞) - es gibt dort anders
+// als bei "cook"/"pantry" keine echte Grundlage, aus der sich ein
+// Standard-Datum ableiten ließe. Aufrufer müssen dafür _mhdPopupAccentColor()
+// statt eines rohen getColor(...)-Aufrufs nutzen (siehe dort).
+function _mhdPopupCurrentRemaining(s) {
+    if (s.mode === "cook") {
+        if (_mhdPopupCurrentNoExpiry(s)) return Infinity;
+        let pill = (window.cookTileMhd[s.cookRowId] || {})[s.cookIdx] || "";
+        let base = _mhdPopupCookBaseItem(s);
+        if (!pill) return base ? getRemainingTime(base) : Infinity;
+        let d = parseDatePillValue(pill);
+        return d ? (d.getTime() - Date.now()) : (base ? getRemainingTime(base) : Infinity);
+    }
+    if (s.mode === "cooknew") {
+        if (_mhdPopupCurrentNoExpiry(s)) return Infinity;
+        let pill = (window.cookNewMhd || {})[s.cookRowId] || "";
+        if (!pill) return NaN;
+        let d = parseDatePillValue(pill);
+        return d ? (d.getTime() - Date.now()) : NaN;
+    }
+    let item = pantry.find(p => p.uid === s.uid);
+    return item ? getRemainingTime(item) : Infinity;
+}
+
+// Wandelt _mhdPopupCurrentRemaining() in eine tatsaechliche Farbe um - alle
+// Aufrufer nutzen ab jetzt DIESE Funktion statt eines rohen
+// getColor(_mhdPopupCurrentRemaining(s)), weil im "cooknew"-Fall (neues,
+// vorher nicht im Bestand vorhandenes Produkt, siehe _cookEmptyPairHtml)
+// ein NaN zurueckkommen kann, solange noch keine MHD-Entscheidung getroffen
+// wurde - getColor(NaN) wuerde dafuer ein kaputtes "rgb(NaN, NaN, NaN)"
+// liefern. In genau diesem Fall wird stattdessen ein neutraler Farbton
+// genutzt, bis tatsaechlich ein Datum eingetragen oder ∞ angetippt wird.
+function _mhdPopupAccentColor(s) {
+    let remaining = _mhdPopupCurrentRemaining(s);
+    if (Number.isNaN(remaining)) return "#8e5fae";
+    return getColor(remaining);
+}
+
+// Schreibt ein fertig getipptes/gewähltes TT|MM|JJ-Datum auf das jeweilige
+// Ziel (echtes Item vs. Kochen-Entwurf) und stößt dessen normales Neuzeichnen
+// an - im Pantry-Fall über die bereits bestehende setPantryMhdInline(), im
+// Kochen-Fall über den bereits bestehenden Entwurfs-Setter _cookSetTileMhd().
+function _mhdPopupCommitPill(s, pill) {
+    if (s.mode === "cook") {
+        _cookSetTileMhd(s.cookRowId, s.cookIdx, pill);
+        if (window.cookTileNoExpiry[s.cookRowId]) delete window.cookTileNoExpiry[s.cookRowId][s.cookIdx];
+        _cookRenderTileList(s.cookRowId);
+        return;
+    }
+    if (s.mode === "cooknew") {
+        if (!window.cookNewMhd) window.cookNewMhd = {};
+        window.cookNewMhd[s.cookRowId] = pill;
+        if (window.cookNewNoExpiry) delete window.cookNewNoExpiry[s.cookRowId];
+        _cookRenderNewItemMhdUI(s.cookRowId);
+        return;
+    }
+    setPantryMhdInline(s.uid, pill);
+}
+
+function _mhdPopupCommitNoExpiryToggle(s) {
+    if (s.mode === "cook") {
+        _cookToggleTileNoExpiry(s.cookRowId, s.cookIdx);
+        return;
+    }
+    if (s.mode === "cooknew") {
+        _cookToggleNewItemNoExpiry(s.cookRowId);
+        return;
+    }
+    togglePantryMhdInlineNoExpiry(s.uid);
+}
+
+// Liefert Tag/Monat/Jahr fürs erneute Befüllen des Zifferblocks im
+// Kochen-Kontext: bevorzugt einen bereits eingetragenen Entwurfs-Override,
+// sonst das berechnete Standard-MHD des zugrundeliegenden Speisekammer-Items
+// (dieselbe "was schlagen wir vor"-Logik wie _mhdPopupSeedFromItem() für den
+// Pantry-Fall).
+function _mhdPopupSeedForCook(s) {
+    let pill = (window.cookTileMhd[s.cookRowId] || {})[s.cookIdx] || "";
+    let d = pill ? parseDatePillValue(pill) : null;
+    if (d) {
+        return {
+            day: String(d.getDate()).padStart(2, "0"),
+            month: String(d.getMonth() + 1).padStart(2, "0"),
+            year: String(d.getFullYear() % 100).padStart(2, "0"),
+            calMonth: d.getMonth(),
+            calYear: d.getFullYear()
+        };
+    }
+    let base = _mhdPopupCookBaseItem(s);
+    if (base) return _mhdPopupSeedFromItem(Object.assign({}, base, { noExpiry: false }));
+    let now = new Date();
+    return { day: String(now.getDate()).padStart(2, "0"), month: String(now.getMonth() + 1).padStart(2, "0"), year: String(now.getFullYear() % 100).padStart(2, "0"), calMonth: now.getMonth(), calYear: now.getFullYear() };
+}
+
+// Pendant zu _mhdPopupSeedForCook() für eine "Nachher"-Kachel, die (siehe
+// mode:"cooknew"/_cookEmptyPairHtml) noch gar kein Speisekammer-Item ist -
+// es gibt hier keine Grundlage, aus der sich ein Standard-MHD ableiten
+// ließe, deshalb einfach der bereits eingetragene Entwurf (falls vorhanden)
+// oder sonst der heutige Tag als neutraler Ausgangspunkt zum Weitertippen.
+function _mhdPopupSeedForCookNew(s) {
+    let pill = (window.cookNewMhd || {})[s.cookRowId] || "";
+    let d = pill ? parseDatePillValue(pill) : null;
+    if (d) {
+        return {
+            day: String(d.getDate()).padStart(2, "0"),
+            month: String(d.getMonth() + 1).padStart(2, "0"),
+            year: String(d.getFullYear() % 100).padStart(2, "0"),
+            calMonth: d.getMonth(),
+            calYear: d.getFullYear()
+        };
+    }
+    let now = new Date();
+    return { day: String(now.getDate()).padStart(2, "0"), month: String(now.getMonth() + 1).padStart(2, "0"), year: String(now.getFullYear() % 100).padStart(2, "0"), calMonth: now.getMonth(), calYear: now.getFullYear() };
+}
+
 function openPantryMhdPopup(uid) {
     let item = pantry.find(p => p.uid === uid);
     if (!item) return;
-    let existing = document.getElementById("pantryMhdPopupOverlay");
-    if (existing) existing.remove();
     let seed = _mhdPopupSeedFromItem(item);
-    window._mhdPopupState = {
+    _openMhdPopupCore({
+        mode: "pantry",
         uid: uid,
         day: seed.day,
         month: seed.month,
         year: seed.year,
-        activeSegment: "day",
-        view: "keypad",
         calMonth: seed.calMonth,
         calYear: seed.calYear,
         // Schnappschuss des Ausgangszustands - wird vom Ecken-X (_mhdPopupClose())
@@ -8432,8 +8587,73 @@ function openPantryMhdPopup(uid) {
             noExpiry: !!item.noExpiry,
             openedDays: item.openedDays
         }
+    });
+}
+
+// Dasselbe Popup für eine "Nachher"-Kachel in "Bestand anpassen 3" (siehe
+// _cookMiniTileEditable3()) - bearbeitet dort bewusst nur den MHD-ENTWURF
+// (window.cookTileMhd/window.cookTileNoExpiry), nicht das echte
+// Speisekammer-Item direkt (das passiert unverändert erst beim Bestätigen
+// des Rezepts, siehe _confirmCookRecipe) - siehe die mode:"cook"-Zweige der
+// Hilfsfunktionen oben.
+function openCookMhdPopup(rowId, idx) {
+    let s = { mode: "cook", cookRowId: rowId, cookIdx: idx };
+    if (!_mhdPopupTargetExists(s)) return;
+    let seed = _mhdPopupSeedForCook(s);
+    s.day = seed.day; s.month = seed.month; s.year = seed.year;
+    s.calMonth = seed.calMonth; s.calYear = seed.calYear;
+    // WICHTIG: _original bezieht sich bewusst auf das echte, UNVERAENDERTE
+    // Speisekammer-Item (die "Vorher"-Kachel) statt auf window.cookTileMhd/
+    // window.cookTileNoExpiry im JETZIGEN Moment. Grund: der ∞-Umschalter
+    // unterm Tile (siehe infBtn in _cookMiniTileEditable3/_cookToggleTileNoExpiry)
+    // aendert diese beiden Werte bereits VOR dem Oeffnen dieses Popups direkt
+    // am Entwurf - wuerde man den Schnappschuss erst hier (beim Oeffnen)
+    // ziehen, waere er bereits "verseucht" mit diesem externen Toggle, und der
+    // Zuruecksetzen-Button unten im Popup (_mhdPopupReset()) haette dann keine
+    // sichtbare Wirkung mehr (bliebe z.B. auf ∞/blau stehen, obwohl das MHD
+    // eigentlich wieder auf das urspruengliche Datum der Vorher-Kachel
+    // zurueckspringen soll). Der Schnappschuss geht deshalb IMMER auf den
+    // wirklichen Ausgangszustand vor jeder Entwurfs-Aenderung dieser Review-
+    // Sitzung zurueck - unabhaengig davon, ob/wie oft zwischenzeitlich am
+    // Tile oder im Popup selbst bereits herumgetippt/umgeschaltet wurde.
+    let base = _mhdPopupCookBaseItem(s);
+    s._original = {
+        mhdOverride: "",
+        noExpiry: !!(base && base.noExpiry)
     };
-    let bg = getColor(getRemainingTime(item));
+    _openMhdPopupCore(s);
+}
+
+// Dasselbe Popup fuer eine "Nachher"-Kachel eines vorher NICHT im Bestand
+// vorhandenen Produkts (siehe _cookEmptyPairHtml/mode:"cooknew") - anders als
+// bei mode:"cook" gibt es hier keine echte Speisekammer-Grundlage, deshalb
+// ist _original einfach "noch nichts entschieden" (kein Datum, kein ∞).
+function openCookNewMhdPopup(rowId) {
+    let s = { mode: "cooknew", cookRowId: rowId };
+    if (!_mhdPopupTargetExists(s)) return;
+    let seed = _mhdPopupSeedForCookNew(s);
+    s.day = seed.day; s.month = seed.month; s.year = seed.year;
+    s.calMonth = seed.calMonth; s.calYear = seed.calYear;
+    // Genau wie bei openCookMhdPopup() (siehe dortiger Kommentar) bezieht
+    // sich _original bewusst auf "noch keine MHD-Entscheidung getroffen"
+    // (der einzige echte Ausgangszustand hier, da es kein Speisekammer-Item
+    // gibt), statt auf window.cookNewMhd/window.cookNewNoExpiry im JETZIGEN
+    // Moment - sonst wäre der Schnappschuss bereits "verseucht", falls vorher
+    // schon der externe ∞-Button unter dem Feld angetippt wurde.
+    s._original = { mhdOverride: "", noExpiry: false };
+    _openMhdPopupCore(s);
+}
+
+// Gemeinsamer Aufbau des Popups (Modal-Rahmen + Ecken-Buttons) für beide
+// Modi - vorher der Körper von openPantryMhdPopup(), jetzt herausgelöst,
+// damit openCookMhdPopup() denselben Rahmen ohne Duplizierung nutzen kann.
+function _openMhdPopupCore(state) {
+    let existing = document.getElementById("pantryMhdPopupOverlay");
+    if (existing) existing.remove();
+    state.activeSegment = "day";
+    state.view = "keypad";
+    window._mhdPopupState = state;
+    let bg = _mhdPopupAccentColor(state);
     createModal(
         `<div class="custom-modal-box" id="pantryMhdPopupBox" style="--modal-accent:${bg}; max-width:300px; padding:20px 18px;">
             <button type="button" onclick="_mhdPopupClose()" title="Abbrechen" style="position:absolute; top:10px; left:10px; width:30px; height:30px; margin:0; border:none; border-radius:9px; background:rgba(0,0,0,0.08); cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; z-index:2;"><img src="data:image/png;base64,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" style="width:12px; height:12px; object-fit:contain; opacity:0.6;"></button>
@@ -8475,6 +8695,24 @@ function _mhdPopupSeedFromItem(item) {
 function _mhdPopupRevertToOriginal() {
     let s = window._mhdPopupState;
     if (!s || !s._original) return false;
+    if (s.mode === "cook") {
+        if (!_mhdPopupCookBaseItem(s)) return false;
+        if (!window.cookTileMhd[s.cookRowId]) window.cookTileMhd[s.cookRowId] = {};
+        window.cookTileMhd[s.cookRowId][s.cookIdx] = s._original.mhdOverride;
+        if (!window.cookTileNoExpiry[s.cookRowId]) window.cookTileNoExpiry[s.cookRowId] = {};
+        window.cookTileNoExpiry[s.cookRowId][s.cookIdx] = s._original.noExpiry;
+        _cookRenderTileList(s.cookRowId);
+        return true;
+    }
+    if (s.mode === "cooknew") {
+        if (!_mhdPopupCookNewRowActive(s)) return false;
+        if (!window.cookNewMhd) window.cookNewMhd = {};
+        window.cookNewMhd[s.cookRowId] = s._original.mhdOverride;
+        if (!window.cookNewNoExpiry) window.cookNewNoExpiry = {};
+        window.cookNewNoExpiry[s.cookRowId] = s._original.noExpiry;
+        _cookRenderNewItemMhdUI(s.cookRowId);
+        return true;
+    }
     let idx = pantry.findIndex(p => p.uid === s.uid);
     if (idx === -1) return false;
     let orig = s._original;
@@ -8508,9 +8746,16 @@ function _mhdPopupReset() {
     let s = window._mhdPopupState;
     if (!s) return;
     if (!_mhdPopupRevertToOriginal()) return;
-    let item = pantry.find(p => p.uid === s.uid);
-    if (item) {
-        let seed = _mhdPopupSeedFromItem(item);
+    let seed;
+    if (s.mode === "cook") {
+        seed = _mhdPopupSeedForCook(s);
+    } else if (s.mode === "cooknew") {
+        seed = _mhdPopupSeedForCookNew(s);
+    } else {
+        let item = pantry.find(p => p.uid === s.uid);
+        seed = item ? _mhdPopupSeedFromItem(item) : null;
+    }
+    if (seed) {
         s.day = seed.day;
         s.month = seed.month;
         s.year = seed.year;
@@ -8529,11 +8774,8 @@ function _mhdPopupReset() {
 // (siehe setPantryMhdInline()) und werden hier nur noch zugemacht.
 function _mhdPopupConfirmClose() {
     let s = window._mhdPopupState;
-    if (s) {
-        let item = pantry.find(p => p.uid === s.uid);
-        if (item && !item.noExpiry && s.day && s.month && s.year) {
-            _mhdPopupCommitIfComplete();
-        }
+    if (s && _mhdPopupTargetExists(s) && !_mhdPopupCurrentNoExpiry(s) && s.day && s.month && s.year) {
+        _mhdPopupCommitIfComplete();
     }
     _mhdPopupCloseOverlay();
 }
@@ -8551,10 +8793,10 @@ function _mhdPopupCloseOverlay() {
 function _mhdPopupRenderHtml() {
     let s = window._mhdPopupState;
     if (!s) return "";
-    let item = pantry.find(p => p.uid === s.uid);
-    if (!item) return "";
+    if (!_mhdPopupTargetExists(s)) return "";
     if (s.view === "calendar") return _mhdPopupCalendarHtml();
-    let bg = getColor(getRemainingTime(item));
+    let noExpiry = _mhdPopupCurrentNoExpiry(s);
+    let bg = _mhdPopupAccentColor(s);
 
     function seg(name, val, placeholder) {
         let active = s.activeSegment === name;
@@ -8575,20 +8817,20 @@ function _mhdPopupRenderHtml() {
     return `
         <div style="font-size:12px; font-weight:bold; letter-spacing:0.04em; text-transform:uppercase; opacity:0.6; text-align:center; margin-bottom:14px;">Ablaufdatum</div>
         <div style="display:flex; align-items:center; justify-content:center; gap:8px;">
-            <button type="button" id="pantryMhdPopupMinus" class="mhd-popup-accent-bg" style="flex:0 0 38px; width:38px; height:38px; margin:0; border:none; border-radius:12px; background:${bg}; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.2); box-sizing:border-box; display:flex; align-items:center; justify-content:center; padding:0; touch-action:none; ${item.noExpiry ? "visibility:hidden;" : ""}"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPUAAABVCAYAAACRraKLAAABfGlDQ1BJQ0MgUHJvZmlsZQAAeJx1kc8rw2Ecx182TDNRFAeHJZw22dTi4rDFKBy2KcNl+9oPtR/fvt9Jy1W5rihx8evAX8BVOStFpOQsR+LC+vp8TU2yz9Pn+bye9/N8Pj3P5wFLJKNk9fpByOYKWijod85F5522ZxrpoBM7npiiq9Ph8Qg17f2WOjNeu81atc/9a81LCV2BuibhUUXVCsITwlOrBdXkLeEOJR1bEj4RdmlyQeEbU49X+MnkVIU/TdYioQBY2oSdqV8c/8VKWssKy8vpzWZWlJ/7mC9xJHKzYYk94t3ohAjix8kkYwTw4WFEZh9uvAzIihr5g9/5M+QlV5FZpYjGMinSFHCJuiLVExKToidkZCia/f/bVz055K1Ud/ih4dEwXvvAtgnlkmF8HBhG+RCsD3Ceq+bn92H4TfRSVevdg9Z1OL2oavFtONuArns1psW+Jau4JZmEl2NoiUL7FdgXKj372efoDiJr8lWXsLML/XK+dfELiotn9kWitK8AAANMSURBVHja7dxLa1wFHIbx5z0t1gvGRQqaQGso6E5JN/0KAbXpTrEb3StZ1G78CKk3KHZvF61LL61Fv0I3Ad0pikkhsWI2gaIFk7+LOaExSdNOtO2cw/OD2QxzgXd4OIdh5oR9qqop4CRwHJgEJtrb40gaxl/ASntbBhaAK0l+3c+LZciQnwPeAU4BL/lZSA/UD8BXwIUkv/2vUVfVM8BZ4AzwpFtLD9Ut4BPggyRr/znqqjoNnAfG3VZ6pFaBuSSX93pQs0fMB6rqHHDJoKWRMA5cqqr5qjow1JG6qsaAz4FX3FEaSdeAN3c7Hc8uQR8ErgIz7iaNtO+AV5Os3+v0e96gpU6YaXu9+5G6qt4CPnMrqVPeTnJxR9RVdRj4BXjajaROWQOOJVndfvr9vkFLnTTW9nvnSF1VR4GfgMfcR+qk28CLSZY2j9TvGbTUaYfajklVBVgEjriL1GlLwFSqaprBv0Ikdd90A8y6g9Qbsw1wwh2k3jjRMLiwgaR+mGgYXLVEUj9MpqrW2eMvmJI6ZaMxaKlXGoOW+la1E0hGLcmoJRm1JKOWZNSSUUsyaklGLcmoJRm1ZNSSjFqSUUsyaklGLRm1JKOWZNSSjFqSUUtGLcmoJRm1JKOWZNSSUUsyaklGLcmoJRm1ZNSSjFqSUUsyaklGLRm1JKOWZNSSjFqSUUtGLcmoJY1C1BvOIPXGRgP87g5Sb9xsgGV3kHpjuQFW3EHqjZUGuO4OUm9cT1VNAwtuIfXCdKoqwCJwxD2kTlsCppokBXzhHlLnfZmkAlBVR4EfgUPuInXSbeCFJDcagCRLwAV3kTrr0yQ3ALJ5T1UdBn4GxtxH6pQ14FiSVdjy2+8kfwBz7iN1ztxm0P+Kug37IvCxG0md8VHb7Z2Otz+iqg4CV4EZ95JG2rfAa0nWt96546+XSf4GXgeuuZk0sr4B3tge9K5Rt2GvAbPAObeTRs48cKrtdGe/93p2VZ0GzgPjbik9UqsMvhS7vNeDcj+vVFVjwFngDPCU20oP1S0GX2B/eLej89BRb4n7WeDd9tT8ZbeWHqjvga8Z/LDk5v0+Kft9t6p6HjgJHAcmgYn29oSfhTSUPxlc12CFwUVLFoArSRb382L/ALpfsparNmysAAAAAElFTkSuQmCC" style="width:15px; height:7px; object-fit:contain; filter:brightness(0) invert(1);"></button>
-            <div style="display:flex; align-items:center; gap:2px; background:#fff; border:1.5px solid rgba(0,0,0,0.18); border-radius:12px; padding:0 8px; height:42px; opacity:${item.noExpiry ? "0.45" : "1"};">
+            <button type="button" id="pantryMhdPopupMinus" class="mhd-popup-accent-bg" style="flex:0 0 38px; width:38px; height:38px; margin:0; border:none; border-radius:12px; background:${bg}; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.2); box-sizing:border-box; display:flex; align-items:center; justify-content:center; padding:0; touch-action:none; ${noExpiry ? "visibility:hidden;" : ""}"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPUAAABVCAYAAACRraKLAAABfGlDQ1BJQ0MgUHJvZmlsZQAAeJx1kc8rw2Ecx182TDNRFAeHJZw22dTi4rDFKBy2KcNl+9oPtR/fvt9Jy1W5rihx8evAX8BVOStFpOQsR+LC+vp8TU2yz9Pn+bye9/N8Pj3P5wFLJKNk9fpByOYKWijod85F5522ZxrpoBM7npiiq9Ph8Qg17f2WOjNeu81atc/9a81LCV2BuibhUUXVCsITwlOrBdXkLeEOJR1bEj4RdmlyQeEbU49X+MnkVIU/TdYioQBY2oSdqV8c/8VKWssKy8vpzWZWlJ/7mC9xJHKzYYk94t3ohAjix8kkYwTw4WFEZh9uvAzIihr5g9/5M+QlV5FZpYjGMinSFHCJuiLVExKToidkZCia/f/bVz055K1Ud/ih4dEwXvvAtgnlkmF8HBhG+RCsD3Ceq+bn92H4TfRSVevdg9Z1OL2oavFtONuArns1psW+Jau4JZmEl2NoiUL7FdgXKj372efoDiJr8lWXsLML/XK+dfELiotn9kWitK8AAANMSURBVHja7dxLa1wFHIbx5z0t1gvGRQqaQGso6E5JN/0KAbXpTrEb3StZ1G78CKk3KHZvF61LL61Fv0I3Ad0pikkhsWI2gaIFk7+LOaExSdNOtO2cw/OD2QxzgXd4OIdh5oR9qqop4CRwHJgEJtrb40gaxl/ASntbBhaAK0l+3c+LZciQnwPeAU4BL/lZSA/UD8BXwIUkv/2vUVfVM8BZ4AzwpFtLD9Ut4BPggyRr/znqqjoNnAfG3VZ6pFaBuSSX93pQs0fMB6rqHHDJoKWRMA5cqqr5qjow1JG6qsaAz4FX3FEaSdeAN3c7Hc8uQR8ErgIz7iaNtO+AV5Os3+v0e96gpU6YaXu9+5G6qt4CPnMrqVPeTnJxR9RVdRj4BXjajaROWQOOJVndfvr9vkFLnTTW9nvnSF1VR4GfgMfcR+qk28CLSZY2j9TvGbTUaYfajklVBVgEjriL1GlLwFSqaprBv0Ikdd90A8y6g9Qbsw1wwh2k3jjRMLiwgaR+mGgYXLVEUj9MpqrW2eMvmJI6ZaMxaKlXGoOW+la1E0hGLcmoJRm1JKOWZNSSUUsyaklGLcmoJRm1ZNSSjFqSUUsyaklGLRm1JKOWZNSSjFqSUUtGLcmoJRm1JKOWZNSSUUsyaklGLcmoJRm1ZNSSjFqSUUsyaklGLRm1JKOWZNSSjFqSUUtGLcmoJY1C1BvOIPXGRgP87g5Sb9xsgGV3kHpjuQFW3EHqjZUGuO4OUm9cT1VNAwtuIfXCdKoqwCJwxD2kTlsCppokBXzhHlLnfZmkAlBVR4EfgUPuInXSbeCFJDcagCRLwAV3kTrr0yQ3ALJ5T1UdBn4GxtxH6pQ14FiSVdjy2+8kfwBz7iN1ztxm0P+Kug37IvCxG0md8VHb7Z2Otz+iqg4CV4EZ95JG2rfAa0nWt96546+XSf4GXgeuuZk0sr4B3tge9K5Rt2GvAbPAObeTRs48cKrtdGe/93p2VZ0GzgPjbik9UqsMvhS7vNeDcj+vVFVjwFngDPCU20oP1S0GX2B/eLej89BRb4n7WeDd9tT8ZbeWHqjvga8Z/LDk5v0+Kft9t6p6HjgJHAcmgYn29oSfhTSUPxlc12CFwUVLFoArSRb382L/ALpfsparNmysAAAAAElFTkSuQmCC" style="width:15px; height:7px; object-fit:contain; filter:brightness(0) invert(1);"></button>
+            <div style="display:flex; align-items:center; gap:2px; background:#fff; border:1.5px solid rgba(0,0,0,0.18); border-radius:12px; padding:0 8px; height:42px; opacity:${noExpiry ? "0.45" : "1"};">
                 ${seg("day", s.day, "TT")}<span style="opacity:0.3;">|</span>${seg("month", s.month, "MM")}<span style="opacity:0.3;">|</span>${seg("year", s.year, "JJ")}
                 <button type="button" onclick="_mhdPopupOpenCalendar()" title="Kalender" style="margin:0 0 0 4px; border:none; background:none; padding:2px; cursor:pointer; display:flex;"><img src="data:image/png;base64,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" style="width:16px; height:16px; object-fit:contain; filter:brightness(0); opacity:0.5;"></button>
             </div>
-            <button type="button" id="pantryMhdPopupPlus" class="mhd-popup-accent-bg" style="flex:0 0 38px; width:38px; height:38px; margin:0; border:none; border-radius:12px; background:${bg}; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.2); box-sizing:border-box; display:flex; align-items:center; justify-content:center; padding:0; touch-action:none; ${item.noExpiry ? "visibility:hidden;" : ""}"><img src="data:image/png;base64,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" style="width:15px; height:15px; object-fit:contain; filter:brightness(0) invert(1);"></button>
+            <button type="button" id="pantryMhdPopupPlus" class="mhd-popup-accent-bg" style="flex:0 0 38px; width:38px; height:38px; margin:0; border:none; border-radius:12px; background:${bg}; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.2); box-sizing:border-box; display:flex; align-items:center; justify-content:center; padding:0; touch-action:none; ${noExpiry ? "visibility:hidden;" : ""}"><img src="data:image/png;base64,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" style="width:15px; height:15px; object-fit:contain; filter:brightness(0) invert(1);"></button>
         </div>
         <div style="display:flex; gap:6px; margin-top:12px;">
             ${chip("+5T", 5)}${chip("+10T", 10)}${chip("+15T", 15)}${chip("+30T", 30)}
         </div>
         ${numpadHtml}
         <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-top:14px;">
-            <button type="button" onclick="_mhdPopupReset()" title="Auf Zeit vor der Änderung zurücksetzen" style="display:flex; align-items:center; justify-content:center; gap:5px; height:28px; padding:0 10px; border:none; border-radius:9px; background:rgba(0,0,0,0.08); color:#333; font-size:11px; font-weight:bold; cursor:pointer;"><img src="data:image/png;base64,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" style="width:11px; height:11px; object-fit:contain; opacity:0.7;">zurücksetzen</button>
-            <button type="button" onclick="_mhdPopupToggleNoExpiry()" title="kein MHD nötig" class="mhd-popup-accent-bg" style="margin:0; display:flex; align-items:center; justify-content:center; width:44px; height:28px; border:none; border-radius:9px; background:${bg}; color:#fff; font-size:15px; font-weight:bold; cursor:pointer; opacity:${item.noExpiry ? "1" : "0.55"}; box-shadow:${item.noExpiry ? "0 0 0 2px rgba(255,255,255,0.9) inset" : "none"};">∞</button>
+            <button type="button" onclick="_mhdPopupReset()" title="Auf Zeit vor der Änderung zurücksetzen" style="display:flex; align-items:center; justify-content:center; width:28px; height:28px; border:none; border-radius:9px; background:rgba(0,0,0,0.08); cursor:pointer;"><img src="data:image/png;base64,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" style="width:13px; height:13px; object-fit:contain; opacity:0.65;"></button>
+            <button type="button" onclick="_mhdPopupToggleNoExpiry()" title="kein MHD nötig" class="mhd-popup-accent-bg" style="margin:0; display:flex; align-items:center; justify-content:center; width:44px; height:28px; border:none; border-radius:9px; background:${bg}; color:#fff; font-size:15px; font-weight:bold; cursor:pointer; opacity:${noExpiry ? "1" : "0.55"}; box-shadow:${noExpiry ? "0 0 0 2px rgba(255,255,255,0.9) inset" : "none"};">∞</button>
         </div>
     `;
 }
@@ -8599,8 +8841,7 @@ function _mhdPopupRenderHtml() {
 // eingetragenen Tages, falls er im angezeigten Monat liegt.
 function _mhdPopupCalendarHtml() {
     let s = window._mhdPopupState;
-    let item = pantry.find(p => p.uid === s.uid);
-    let bg = item ? getColor(getRemainingTime(item)) : "#888";
+    let bg = _mhdPopupTargetExists(s) ? _mhdPopupAccentColor(s) : "#888";
     let firstOfMonth = new Date(s.calYear, s.calMonth, 1);
     let startOffset = (firstOfMonth.getDay() + 6) % 7; // Montag als Wochenbeginn
     let daysInMonth = new Date(s.calYear, s.calMonth + 1, 0).getDate();
@@ -8626,7 +8867,7 @@ function _mhdPopupCalendarHtml() {
         <div style="display:grid; grid-template-columns:repeat(7, 1fr); gap:4px;">
             ${cells}
         </div>
-        <button type="button" onclick="_mhdPopupBackToKeypad()" style="margin:14px auto 0; display:block; border:none; background:rgba(0,0,0,0.1); border-radius:9px; padding:6px 14px; font-size:12px; font-weight:bold; color:#333; cursor:pointer;">← Zifferneingabe</button>
+        <button type="button" onclick="_mhdPopupBackToKeypad()" title="zurück zur Zifferneingabe" style="margin:14px auto 0; display:flex; align-items:center; justify-content:center; width:34px; height:28px; border:none; background:rgba(0,0,0,0.1); border-radius:9px; cursor:pointer;"><img src="data:image/png;base64,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" style="width:13px; height:13px; object-fit:contain; opacity:0.65;"></button>
     `;
 }
 
@@ -8646,8 +8887,7 @@ function _mhdPopupRerender() {
     let s = window._mhdPopupState;
     let contentEl = document.getElementById("pantryMhdPopupContent");
     if (!contentEl || !s) return;
-    let item = pantry.find(p => p.uid === s.uid);
-    if (item) _mhdPopupUpdateAccentColor(getColor(getRemainingTime(item)));
+    if (_mhdPopupTargetExists(s)) _mhdPopupUpdateAccentColor(_mhdPopupAccentColor(s));
     contentEl.innerHTML = _mhdPopupRenderHtml();
     _mhdPopupInitHold();
 }
@@ -8709,9 +8949,8 @@ function _mhdPopupSetActiveSegment(name) {
 function _mhdPopupDigit(n) {
     let s = window._mhdPopupState;
     if (!s) return;
-    let item = pantry.find(p => p.uid === s.uid);
-    let wasNoExpiry = !!(item && item.noExpiry);
-    if (wasNoExpiry) togglePantryMhdInlineNoExpiry(s.uid);
+    let wasNoExpiry = _mhdPopupCurrentNoExpiry(s);
+    if (wasNoExpiry) _mhdPopupCommitNoExpiryToggle(s);
     let cur = s[s.activeSegment] || "";
     if (cur.length >= 2) cur = "";
     s[s.activeSegment] = cur + String(n);
@@ -8781,7 +9020,7 @@ function _mhdPopupCommitIfComplete() {
     s.month = s.month.padStart(2, "0");
     s.year = s.year.padStart(2, "0");
     let pill = s.day + "|" + s.month + "|" + s.year;
-    setPantryMhdInline(s.uid, pill);
+    _mhdPopupCommitPill(s, pill);
     _mhdPopupRefreshAccent();
 }
 
@@ -8791,29 +9030,34 @@ function _mhdPopupCommitIfComplete() {
 function _mhdPopupRefreshAccent() {
     let s = window._mhdPopupState;
     if (!s) return;
-    let item = pantry.find(p => p.uid === s.uid);
-    if (!item) return;
-    _mhdPopupUpdateAccentColor(getColor(getRemainingTime(item)));
+    if (!_mhdPopupTargetExists(s)) return;
+    _mhdPopupUpdateAccentColor(_mhdPopupAccentColor(s));
     _mhdPopupUpdateKeypadSegments();
 }
 
-// Schnellauswahl-Chips (+5/+10/+15/+30 Tage ab HEUTE, nicht ab dem gerade
-// eingetippten Datum) - deckt die häufigsten Haltbarkeits-Zeiträume in einem
-// einzigen Klick ab. Setzt die Segmente jetzt DIREKT aus dem berechneten
-// Zieldatum (statt sie hinterher wieder aus dem Item zurückzulesen) - siehe
-// Kommentar bei _mhdPopupCommitIfComplete(), derselbe Rückweg konnte hier
-// genauso zu einem (seltener bemerkten) Nicht-Reagieren führen.
+// Schnellauswahl-Chips (+5/+10/+15/+30 Tage ab dem GERADE EINGETRAGENEN
+// Datum, nicht ab heute) - deckt die häufigsten Verlängerungs-Schritte in
+// einem einzigen Klick ab. Vorher wurde hier immer ab dem heutigen Tag
+// gerechnet, egal was gerade im Feld stand - z.B. "+5T" bei einem MHD vom
+// 24.09. sprang dadurch fälschlich auf heute+5 (18.09., also RÜCKWÄRTS)
+// statt auf die eigentlich gewünschten 29.09. (24.09. + 5 Tage). Setzt die
+// Segmente jetzt DIREKT aus dem berechneten Zieldatum (statt sie hinterher
+// wieder aus dem Item zurückzulesen) - siehe Kommentar bei
+// _mhdPopupCommitIfComplete(), derselbe Rückweg konnte hier genauso zu einem
+// (seltener bemerkten) Nicht-Reagieren führen.
 function _mhdPopupChip(days) {
     let s = window._mhdPopupState;
     if (!s) return;
-    let target = new Date();
+    let target = (s.day && s.month && s.year)
+        ? new Date(2000 + parseInt(s.year, 10), parseInt(s.month, 10) - 1, parseInt(s.day, 10))
+        : new Date();
     target.setDate(target.getDate() + days);
     s.day = String(target.getDate()).padStart(2, "0");
     s.month = String(target.getMonth() + 1).padStart(2, "0");
     s.year = String(target.getFullYear() % 100).padStart(2, "0");
     s.activeSegment = "day";
     let pill = s.day + "|" + s.month + "|" + s.year;
-    setPantryMhdInline(s.uid, pill);
+    _mhdPopupCommitPill(s, pill);
     _mhdPopupRefreshAccent();
 }
 
@@ -8825,11 +9069,13 @@ function _mhdPopupChip(days) {
 function _mhdPopupToggleNoExpiry() {
     let s = window._mhdPopupState;
     if (!s) return;
-    togglePantryMhdInlineNoExpiry(s.uid);
-    let item = pantry.find(p => p.uid === s.uid);
-    if (item && !item.noExpiry) {
-        let seed = _mhdPopupSeedFromItem(item);
-        s.day = seed.day; s.month = seed.month; s.year = seed.year;
+    _mhdPopupCommitNoExpiryToggle(s);
+    if (!_mhdPopupCurrentNoExpiry(s)) {
+        let seed = s.mode === "cook" ? _mhdPopupSeedForCook(s) : s.mode === "cooknew" ? _mhdPopupSeedForCookNew(s) : (() => {
+            let item = pantry.find(p => p.uid === s.uid);
+            return item ? _mhdPopupSeedFromItem(item) : null;
+        })();
+        if (seed) { s.day = seed.day; s.month = seed.month; s.year = seed.year; }
     }
     _mhdPopupRerender();
 }
@@ -8877,7 +9123,7 @@ function _mhdPopupCalendarPick(day) {
     s.activeSegment = "day";
     s.view = "keypad";
     let pill = s.day + "|" + s.month + "|" + s.year;
-    setPantryMhdInline(s.uid, pill);
+    _mhdPopupCommitPill(s, pill);
     _mhdPopupRerender();
 }
 
@@ -24386,6 +24632,49 @@ function _cookBaseToUnit(baseVal, unit) {
     return baseVal;
 }
 
+// BUGFIX: Wandelt eine Menge von "fromUnit" nach "toUnit" um - genau wie
+// _cookBaseToUnit(_cookUnitToBase(value, fromUnit).val, toUnit), AUSSER wenn
+// eine der beiden Seiten Stückzahl ("") ist. Stückzahl hat keine physikalische
+// Entsprechung zu Gewicht/Volumen; _cookUnitToBase/_cookBaseToUnit behandeln
+// "" bisher trotzdem wie eine reine Basis-Einheit (genau wie g/ml) und lassen
+// sie dadurch ungewollt über den kg/l-Faktor 1000 mitrechnen. Das führte zu
+// zwei Problemen in den "Nachher"-Kacheln (_cookMiniTileEditable,
+// _cookPantryTileAfter, _cookMiniTileEditable3): 1) der angezeigte Wert wurde
+// beim Wechsel zu Stück absurd groß (z.B. aus 6l wurden 6000 "Stück"), und
+// 2) der kleine +/-Schritt für Stück (siehe _openQtyStep) verschwand beim
+// Zurückrechnen in eine kg/l-Menge vollständig in deren Rundung (2
+// Nachkommastellen) - die +/- Buttons wirkten dadurch komplett wirkungslos.
+// Fix: sobald eine Seite Stückzahl ist, wird die Zahl 1:1 übernommen (reines
+// Umbenennen statt Umrechnen) - analog zum normalen Speisekammer-
+// Bearbeiten-Modus (siehe setPantryUnitInline), der beim Einheitswechsel
+// ebenfalls nicht umrechnet, sondern nur die Einheit austauscht. Die
+// bestehende, bewährte kg/g- bzw. l/ml-Umrechnung (siehe _cookUnitToBase/
+// _cookBaseToUnit oben) bleibt für alle anderen Einheiten-Kombinationen
+// unangetastet.
+function _cookConvertDisplayQty(value, fromUnit, toUnit) {
+    if ((fromUnit || "") === "" || (toUnit || "") === "") return value;
+    return _cookBaseToUnit(_cookUnitToBase(value, fromUnit).val, toUnit);
+}
+
+// Ordnet eine Einheit ihrer physikalischen "Familie" zu: Gewicht (g/kg),
+// Volumen (l/ml) oder Stückzahl (""). Dient dazu zu erkennen, ob eine
+// Nachher-Kachel gerade auf eine Einheit einer ANDEREN Familie umgestellt
+// wurde als die ursprünglich hinterlegte (item.qtyUnit) - siehe deltaBadge in
+// _cookTilePairHtml: g<->kg bzw. l<->ml lassen sich verlustfrei/exakt
+// ineinander umrechnen (reiner Faktor 1000), eine Umrechnung ÜBER die
+// Familien hinweg (z.B. kg -> l) nimmt dagegen implizit eine Dichte von
+// genau 1 an (siehe _cookUnitToBase/_cookBaseToUnit, die g und ml intern als
+// identische Basis behandeln) - das stimmt zufällig bei Wasser, aber z.B.
+// nicht bei Honig oder Mehl. Ein solcher Familienwechsel sollte im UI daher
+// als Annahme/Unsicherheit erkennbar sein statt wie ein normaler, exakter
+// Verbrauch/eine normale Korrektur.
+function _cookUnitFamily(unit) {
+    let u = (unit || "").trim().toLowerCase();
+    if (u === "kg" || u === "g") return "weight";
+    if (u === "l" || u === "ml") return "volume";
+    return "count"; // Stückzahl / leer
+}
+
 // Kurzes "Xd|Yh"-Label wie am echten Pantry-Tile (siehe renderPantry() /
 // der setInterval-Tick dort) - hier als eigenständige, wiederverwendbare
 // Funktion, da wir Tiles außerhalb ihrer eigentlichen Kachel nachbauen.
@@ -24765,6 +25054,8 @@ function openCookRecipeReview(index) {
     window.cookTileNoExpiry = {};
     window.cookNewItemState = {};
     window.cookNewItemStorage = {};
+    window.cookNewMhd = {};
+    window.cookNewNoExpiry = {};
     window.cookExpanded = {};
     window.cookTileBrowseIndex = {};
     window.cookRowAdding = {};
@@ -24842,6 +25133,8 @@ function openStandaloneStockUpdate() {
     window.cookTileNoExpiry = {};
     window.cookNewItemState = {};
     window.cookNewItemStorage = {};
+    window.cookNewMhd = {};
+    window.cookNewNoExpiry = {};
     window.cookExpanded = {};
     window.cookTileBrowseIndex = {};
     window.cookRowAdding = {};
@@ -24969,7 +25262,7 @@ function _cookMiniTileEditable(rowId, idx, item) {
     let displayUnit = (window.cookTileUnit[rowId] && window.cookTileUnit[rowId][idx] !== undefined)
         ? window.cookTileUnit[rowId][idx]
         : (item.qtyUnit || "");
-    let displayQty = _roundQty(_cookBaseToUnit(_cookUnitToBase(current, item.qtyUnit).val, displayUnit), displayUnit);
+    let displayQty = _roundQty(_cookConvertDisplayQty(current, item.qtyUnit, displayUnit), displayUnit);
 
     // MHD als echtes, editierbares TT|MM|JJ-Pill-Feld statt reiner
     // Resttage-Anzeige (analog zum MHD-Feld bei neu anzulegenden Items, siehe
@@ -25160,9 +25453,18 @@ function _cookMiniTileEditable3(rowId, idx, item) {
     let effectiveRemaining;
     if (noExpiry) {
         effectiveRemaining = Infinity;
-    } else {
-        let mhdDate = parseDatePillValue(mhdPillValue);
+    } else if (mhdOverride) {
+        let mhdDate = parseDatePillValue(mhdOverride);
         effectiveRemaining = mhdDate ? (mhdDate.getTime() - Date.now()) : getRemainingTime(item);
+    } else {
+        // Noch kein echter manueller Override gesetzt - dann exakt dieselbe,
+        // stundengenaue Restlaufzeit wie die "Vorher"-Kachel (getRemainingTime())
+        // nehmen, statt sie ueber mhdDefaultVal erst auf einen vollen Kalendertag
+        // zu runden und dann wieder zurueckzuparsen. Dieser Umweg konnte die
+        // Restlaufzeit um bis zu knapp einen Tag verschieben - genug, um einen
+        // Posten, der nur knapp ueber der 7-Tage-Schwelle liegt (und damit
+        // eigentlich satt gruen ist), faelschlich schon als gelb anzuzeigen.
+        effectiveRemaining = getRemainingTime(item);
     }
     let catColor = getColor(effectiveRemaining);
     let ringColor = getRingColor(effectiveRemaining);
@@ -25177,7 +25479,7 @@ function _cookMiniTileEditable3(rowId, idx, item) {
     let displayUnit = (window.cookTileUnit[rowId] && window.cookTileUnit[rowId][idx] !== undefined)
         ? window.cookTileUnit[rowId][idx]
         : (item.qtyUnit || "");
-    let displayQty = _roundQty(_cookBaseToUnit(_cookUnitToBase(current, item.qtyUnit).val, displayUnit), displayUnit);
+    let displayQty = _roundQty(_cookConvertDisplayQty(current, item.qtyUnit, displayUnit), displayUnit);
     // Schrittgroesse fuer die +/- Buttons unten (kg/l in 0.1er-, g/ml in
     // 10er-Schritten usw., siehe _openQtyStep) - dieselbe bereits bewaehrte
     // Funktion, die auch "Bestand aendern 2" (_cookStepQtyV2) nutzt.
@@ -25199,7 +25501,16 @@ function _cookMiniTileEditable3(rowId, idx, item) {
     // nur _cookSetTileMhd ohne Folge-Rerender): noetig, damit sich Kachel-/
     // Ring-Farbe nach dem Eintippen eines neuen MHD tatsaechlich aktualisiert
     // (siehe effectiveRemaining/catColor oben).
-    let mhdFieldHtml = `<input id="cookMhd_${rowId}_${idx}" type="text" inputmode="numeric" maxlength="8" placeholder="TT|MM|JJ" value="${mhdPillValue}" oninput="formatDatePillInput(this)" onfocus="if (${noExpiry ? "true" : "false"}) _cookToggleTileNoExpiry('${rowId}', ${idx});" onchange="_cookSetTileMhd('${rowId}', ${idx}, this.value); _cookRenderTileList('${rowId}')" onclick="event.stopPropagation();" style="width:100%; box-sizing:border-box; text-align:center; font-size:9px; ${fieldStyle} height:30px; padding:0 4px; opacity:${noExpiry ? "0.5" : "1"};">`;
+    // onclick öffnet jetzt das volle MHD-Popup (Zifferblock/Kalender/Chips/
+    // ±Tage/Reset/∞, siehe openCookMhdPopup()) statt eines rohen Textfelds -
+    // Antippen des Datums soll (wie in der echten Speisekammer, siehe
+    // mhdEditHtml in renderPantry()) IMMER das Popup öffnen, nicht eine
+    // manuelle Direkteingabe. Der Kalender-Badge oben rechts auf der Kachel
+    // (siehe _cookMiniTileEditable3()-Rückgabe unten) öffnet exakt dasselbe
+    // Popup - beide Wege sind gleichwertig, das hier ist nur der naheliegendere
+    // (weil direkt auf dem sichtbaren Datum).
+    let mhdPillDisplay = noExpiry ? "∞" : (mhdPillValue || "TT|MM|JJ");
+    let mhdFieldHtml = `<button type="button" onclick="event.stopPropagation(); openCookMhdPopup('${rowId}', ${idx})" style="width:100%; box-sizing:border-box; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:9px; ${fieldStyle} height:30px; margin:0; padding:0 4px; opacity:${noExpiry ? "0.5" : "1"}; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; -webkit-appearance:none; appearance:none;">${mhdPillDisplay}</button>`;
     // ∞-Umschalter direkt unter dem MHD-Feld, exakt gleiche Breite (100% der
     // 60px-Spalte) wie das Feld darüber - siehe _cookToggleTileNoExpiry. Feste
     // Höhe (26px, wie die Lagerort-Icon-Kreise, siehe
@@ -25447,10 +25758,19 @@ function _cookOpenStateButtonHtml(rowId, idx, item) {
     // gewichtiger wirken als z.B. der ∞-Button links daneben - Icon+Label
     // hängen daher links, mit spürbar mehr Luft rechts, statt mittig
     // zusammengequetscht zu stehen (siehe Referenzkachel).
+    // Kompakte einzeilige Darstellung statt Zweizeiler: ein Zeilenumbruch
+    // machte den Chip zuletzt höher als das MHD-Feld links daneben (beide
+    // sollen aber exakt gleich hoch sein, siehe mhdFieldHtml). Damit auch
+    // längere Label ("Rest bleibt angebrochen", "Rest bleibt zu · 10d") ohne
+    // Umbruch UND ohne Abschneiden in die knappe Breite passen, sind
+    // Schriftgröße/Icon/Abstände/Innenabstand hier spürbar reduziert
+    // (9px/11px/5px/8px statt zuvor 11px/14px/8px/12px) - text-overflow:
+    // ellipsis bleibt nur noch als Absicherung für unrealistisch lange Werte
+    // stehen, im Normalfall greift sie jetzt nicht mehr.
     return `
-    <div id="cookOpenStateChip_${rowId}_${idx}" style="width:100%; height:100%; min-height:30px;">
-        <button type="button" onclick="event.stopPropagation(); _cookCycleOpenState('${rowId}', ${idx})" title="Zustand des Rests durchschalten" style="width:100%; height:100%; min-height:30px; box-sizing:border-box; margin:0; display:flex; align-items:center; justify-content:flex-start; gap:8px; padding:0 12px; border-radius:9px; border:1px solid rgba(255,255,255,0.4); background:${state ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.1)"}; color:white; font-family:inherit; font-size:11px; cursor:pointer;">
-            <span style="display:inline-block; width:14px; height:14px; flex-shrink:0; background:#fff; -webkit-mask:url('${icon}') center/contain no-repeat; mask:url('${icon}') center/contain no-repeat;"></span>
+    <div id="cookOpenStateChip_${rowId}_${idx}" style="width:100%; height:30px;">
+        <button type="button" onclick="event.stopPropagation(); _cookCycleOpenState('${rowId}', ${idx})" title="Zustand des Rests durchschalten" style="width:100%; height:30px; box-sizing:border-box; margin:0; display:flex; align-items:center; justify-content:flex-start; gap:5px; padding:0 8px; border-radius:9px; border:1px solid rgba(255,255,255,0.4); background:${state ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.1)"}; color:white; font-family:inherit; font-size:9px; cursor:pointer;">
+            <span style="display:inline-block; width:11px; height:11px; flex-shrink:0; background:#fff; -webkit-mask:url('${icon}') center/contain no-repeat; mask:url('${icon}') center/contain no-repeat;"></span>
             <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${label}</span>
         </button>
     </div>`;
@@ -25762,11 +26082,38 @@ function _cookTilePairHtml(rowId, idx, item, unknownQty) {
 
     let current = window.cookTileVals[rowId][idx];
     let original = parseFloat(item.qty) || 0;
-    let delta = _roundQty(original - current, item.qtyUnit);
+    let delta = _roundQty(original - current, item.qtyUnit); // >0: verbraucht, <0: erhöht (Korrektur)
     let unitLbl = item.qtyUnit ? "\u2009" + item.qtyUnit : "";
-    let deltaBadge = delta > 0
-        ? `<div style="background:#9c3b3b; color:white; font-size:11px; font-weight:bold; border-radius:8px; padding:3px 9px; white-space:nowrap;">-${delta}${unitLbl}</div>`
-        : `<div style="background:rgba(0,0,0,0.08); color:inherit; opacity:0.55; font-size:11px; font-weight:bold; border-radius:8px; padding:3px 9px; white-space:nowrap;">unverändert</div>`;
+
+    // Aktuell am Tile gewählte Anzeige-Einheit (siehe window.cookTileUnit in
+    // _cookSetUnitOnly) - falls sie einer ANDEREN physikalischen Familie
+    // angehört als die ursprünglich hinterlegte Einheit (item.qtyUnit), z.B.
+    // Wechsel von "l" auf "kg", beruht die dabei verrechnete Menge auf einer
+    // reinen Annahme (Dichte = 1, siehe _cookUnitFamily oben) statt einer
+    // exakten Umrechnung - das Badge bekommt dafür eine eigene Warnfarbe
+    // (statt des normalen Rot/Grün), mit Hinweis im Tooltip.
+    let tileDisplayUnit = (window.cookTileUnit[rowId] && window.cookTileUnit[rowId][idx] !== undefined)
+        ? window.cookTileUnit[rowId][idx]
+        : (item.qtyUnit || "");
+    let unitFamilyChanged = _cookUnitFamily(tileDisplayUnit) !== _cookUnitFamily(item.qtyUnit);
+    let mismatchTitle = unitFamilyChanged ? ` title="Einheit auf eine andere Mengenart umgestellt (z.B. Gewicht ↔ Volumen) - die verrechnete Menge beruht auf einer Annahme (Dichte 1:1) und kann ungenau sein"` : "";
+
+    let deltaBadge;
+    if (delta > 0) {
+        // Verbrauch (Menge wurde reduziert).
+        let bg = unitFamilyChanged ? "#a9752c" : "#9c3b3b";
+        deltaBadge = `<div${mismatchTitle} style="background:${bg}; color:white; font-size:11px; font-weight:bold; border-radius:8px; padding:3px 9px; white-space:nowrap;">-${delta}${unitLbl}${unitFamilyChanged ? " ⚠" : ""}</div>`;
+    } else if (delta < 0) {
+        // Menge wurde über den Ausgangswert hinaus ERHÖHT - z.B. Korrektur
+        // eines falsch erkannten/eingetragenen Ausgangsbestands (siehe
+        // _cookSetQtyValue/_confirmCookRecipe: keine Obergrenze mehr bei
+        // "original"). Grün statt Rot, da hier nichts verbraucht, sondern
+        // etwas hinzugefügt/korrigiert wird.
+        let bg = unitFamilyChanged ? "#a9752c" : "#3b7a3b";
+        deltaBadge = `<div${mismatchTitle} style="background:${bg}; color:white; font-size:11px; font-weight:bold; border-radius:8px; padding:3px 9px; white-space:nowrap;">+${-delta}${unitLbl}${unitFamilyChanged ? " ⚠" : ""}</div>`;
+    } else {
+        deltaBadge = `<div style="background:rgba(0,0,0,0.08); color:inherit; opacity:0.55; font-size:11px; font-weight:bold; border-radius:8px; padding:3px 9px; white-space:nowrap;">unverändert</div>`;
+    }
 
     // "Bestand ändern 2"-Vorschau (siehe openCookRecipeReviewV2()): dieselben
     // current/original/delta-Werte wie oben, nur andere Optik - Vorher links,
@@ -25944,7 +26291,7 @@ function _cookPantryTileAfter(rowId, idx, item) {
     let displayUnit = (window.cookTileUnit[rowId] && window.cookTileUnit[rowId][idx] !== undefined)
         ? window.cookTileUnit[rowId][idx]
         : (item.qtyUnit || "");
-    let displayQty = _roundQty(_cookBaseToUnit(_cookUnitToBase(current, item.qtyUnit).val, displayUnit), displayUnit);
+    let displayQty = _roundQty(_cookConvertDisplayQty(current, item.qtyUnit, displayUnit), displayUnit);
 
     let remaining = getRemainingTime(item);
     // Dieselbe freshness-basierte Farbe wie die Vorher-Kachel (siehe bg in
@@ -26211,7 +26558,19 @@ function _cookEmptyPairHtml(rowId, row) {
     // _cookMiniTileStatic) - also farbig gefuellt statt gestrichelt. Der
     // gestrichelte Look ist nur fuer "nicht im Bestand" reserviert.
     let match = findCatalogMatch(row.name);
-    let catColor = match ? getCategoryColor(match.cat) : "#52aa5e";
+    // Solange noch kein MHD eingetragen bzw. ∞ angetippt wurde, gilt weiterhin
+    // die neutrale Kategoriefarbe (kein Ampel-Wert ohne Datengrundlage
+    // vorgetaeuscht) - erst NACH einer echten MHD-Entscheidung (Datum oder
+    // ∞, siehe openCookNewMhdPopup()/_cookToggleNewItemNoExpiry()) faerbt
+    // sich die Kachel wie ein echtes Speisekammer-Tile passend zur
+    // Resthaltbarkeit ein (siehe _cookNewItemAccentColor()). Vorher wurde
+    // hier IMMER nur die Kategoriefarbe verwendet, egal was am MHD-Feld
+    // eingetragen wurde - die Kachel blieb also faelschlich immer gleich
+    // eingefaerbt.
+    let catColor = _cookNewItemAccentColor(rowId, match);
+    let newNoExpiry = !!(window.cookNewNoExpiry && window.cookNewNoExpiry[rowId]);
+    let newMhdOverride = (window.cookNewMhd && window.cookNewMhd[rowId]) || "";
+    let newMhdDisplay = newNoExpiry ? "∞" : (newMhdOverride || "TT|MM|JJ");
     let fieldStyle = _cookFieldStyle();
     let showNameInput = !row.fixedName;
     let nameFieldHtml = showNameInput
@@ -26225,7 +26584,7 @@ function _cookEmptyPairHtml(rowId, row) {
     <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
         ${beforeHtml}
         <div style="padding:4px 0;">${_cookChevronDown("#bbb")}</div>
-        <div onclick="_cookToggleAddTile('${rowId}')" style="position:relative; width:280px; max-width:100%; background:${catColor}; border-radius:20px; padding:14px; box-shadow:0 4px 8px rgba(0,0,0,0.15); color:white; box-sizing:border-box; font-family:'Lucida Console',monospace; cursor:pointer;">
+        <div id="cookNewActivatedTile_${rowId}" onclick="_cookToggleAddTile('${rowId}')" style="position:relative; width:280px; max-width:100%; background:${catColor}; border-radius:20px; padding:14px; box-shadow:0 4px 8px rgba(0,0,0,0.15); color:white; box-sizing:border-box; font-family:'Lucida Console',monospace; cursor:pointer;">
             <div onclick="event.stopPropagation();" style="display:flex; align-items:flex-start; gap:12px;">
                 <div id="cookNewAvatarWrap_${rowId}" style="flex-shrink:0; position:relative; width:60px; height:60px;">${_cookNewAvatarHtml(rowId, match)}</div>
                 <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:6px;">
@@ -26239,18 +26598,204 @@ function _cookEmptyPairHtml(rowId, row) {
             ${dividerHtml}
             <div onclick="event.stopPropagation();" style="display:flex; align-items:flex-start; gap:12px;">
                 <div style="flex-shrink:0; width:60px; height:30px; display:flex;">
-                    <input id="cookNewMhd_${rowId}" type="text" inputmode="numeric" maxlength="8" placeholder="TT|MM|JJ" data-no-expiry="0" oninput="formatDatePillInput(this)" onfocus="setPantryMhdFieldNoExpiry('cookNewMhd_${rowId}', 'cookNewMhdInf_${rowId}', false)" style="width:100%; box-sizing:border-box; text-align:center; font-size:9px; ${fieldStyle} height:30px; padding:0 4px;">
+                    <button type="button" id="cookNewMhdBtn_${rowId}" onclick="event.stopPropagation(); openCookNewMhdPopup('${rowId}')" style="width:100%; box-sizing:border-box; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:9px; ${fieldStyle} height:30px; margin:0; padding:0 4px; opacity:${newNoExpiry ? "0.5" : "1"}; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; -webkit-appearance:none; appearance:none;">${newMhdDisplay}</button>
+                    <input type="hidden" id="cookNewMhd_${rowId}" value="${newNoExpiry ? "" : newMhdOverride}" data-no-expiry="${newNoExpiry ? "1" : "0"}">
                 </div>
                 <div style="flex:1; min-width:0; height:30px; display:flex;">${_cookNewItemStateButtonHtml(rowId, match)}</div>
             </div>
             <div onclick="event.stopPropagation();" style="display:flex; align-items:flex-start; gap:12px; margin-top:6px;">
                 <div style="flex-shrink:0; width:60px; height:30px; display:flex;">
-                    <button type="button" id="cookNewMhdInf_${rowId}" onclick="event.stopPropagation(); togglePantryMhdFieldNoExpiry('cookNewMhd_${rowId}', 'cookNewMhdInf_${rowId}')" title="kein MHD nötig" style="width:100%; height:30px; flex-shrink:0; box-sizing:border-box; margin:0; border:none; border-radius:8px; background:rgba(255,255,255,0.3); color:white; font-size:11px; font-weight:bold; cursor:pointer; padding:0; opacity:0.5;">∞</button>
+                    <button type="button" id="cookNewMhdInf_${rowId}" onclick="event.stopPropagation(); _cookToggleNewItemNoExpiry('${rowId}')" title="kein MHD nötig" style="width:100%; height:30px; flex-shrink:0; box-sizing:border-box; margin:0; border:none; border-radius:8px; background:rgba(255,255,255,0.3); color:white; font-size:11px; font-weight:bold; cursor:pointer; padding:0; opacity:${newNoExpiry ? "1" : "0.55"}; box-shadow:${newNoExpiry ? "0 0 0 2px rgba(255,255,255,0.9) inset" : "none"};">∞</button>
                 </div>
                 <div id="cookNewStorageRowWrap_${rowId}" style="flex:1; min-width:0; height:32px; display:flex; align-items:center;">${_cookNewItemStorageRowHtml(rowId, match)}</div>
             </div>
         </div>
     </div>`;
+}
+
+// "Bestand anpassen 3"-Pendant zu _cookEmptyPairHtml() oben (fuer eine
+// Zutat, die vorher noch NICHT im Bestand war): 1:1-Kopie, nur die
+// Mengen-Zeile bekommt dieselben -/+ Icon-Buttons links/rechts der
+// Eingabe wie ein bereits bestehendes Tile in "Bestand anpassen 3" (siehe
+// qtyMinusBtn/qtyPlusBtn in _cookMiniTileEditable3) - vorher gab es hier
+// (anders als bei einem bestehenden Tile) nur das nackte Eingabefeld ohne
+// Stepper. Eigener Code-Pfad statt Verzweigung in der Originalfunktion,
+// selbes Prinzip wie bei _cookMiniTileStatic3/_cookMiniTileEditable3.
+function _cookEmptyPairHtml3(rowId, row) {
+    let beforeHtml = `
+        <div style="width:280px; max-width:100%; border-radius:20px; padding:14px; box-sizing:border-box; border:3px dashed #ccc; color:#999; font-family:'Lucida Console',monospace;">
+            <div style="display:flex; align-items:stretch; gap:12px;">
+                <div style="flex-shrink:0; width:60px; display:flex; flex-direction:column; gap:8px;">
+                    <div style="width:60px; height:60px; border-radius:50%; border:2px dashed #ccc; box-sizing:border-box;"></div>
+                    <div style="text-align:center; border:1px dashed #ccc; border-radius:8px; padding:5px 4px; font-size:10px;">–</div>
+                </div>
+                <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:8px;">
+                    <div style="border:1px dashed #ccc; border-radius:8px; padding:6px 8px; font-size:14px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${row.name || "?"}</div>
+                    <div style="flex:1; display:flex; align-items:center; border:1px dashed #ccc; border-radius:8px; padding:6px 8px; font-size:12.5px;">nicht im Bestand</div>
+                </div>
+            </div>
+        </div>`;
+
+    if (!(window.cookRowAdding && window.cookRowAdding[rowId])) {
+        return `
+        <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+            ${beforeHtml}
+            <div style="padding:4px 0;">${_cookChevronDown("#bbb")}</div>
+            <div onclick="_cookToggleAddTile('${rowId}')" style="width:280px; max-width:100%; border-radius:20px; padding:14px; box-sizing:border-box; border:3px dashed #ccc; color:#999; font-family:'Lucida Console',monospace; cursor:pointer;">
+                <div style="display:flex; align-items:stretch; gap:12px;">
+                    <div style="flex-shrink:0; width:60px; display:flex; flex-direction:column; gap:8px;">
+                        <div style="width:60px; height:60px; border-radius:50%; border:2px dashed #ccc; display:flex; align-items:center; justify-content:center; color:#bbb; font-size:22px; font-weight:bold; line-height:1; box-sizing:border-box;">+</div>
+                        <div style="text-align:center; border:1px dashed #ccc; border-radius:8px; padding:5px 4px; font-size:10px;">–</div>
+                    </div>
+                    <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:8px;">
+                        <div style="border:1px dashed #ccc; border-radius:8px; padding:6px 8px; font-size:14px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${row.name || "?"}</div>
+                        <div style="flex:1; display:flex; align-items:center; justify-content:center; text-align:center; border:1px dashed #ccc; border-radius:8px; padding:6px 8px; font-size:11.5px; line-height:1.3;">antippen zum Hinzufügen</div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    let match = findCatalogMatch(row.name);
+    let catColor = _cookNewItemAccentColor(rowId, match);
+    let newNoExpiry = !!(window.cookNewNoExpiry && window.cookNewNoExpiry[rowId]);
+    let newMhdOverride = (window.cookNewMhd && window.cookNewMhd[rowId]) || "";
+    let newMhdDisplay = newNoExpiry ? "∞" : (newMhdOverride || "TT|MM|JJ");
+    let fieldStyle = _cookFieldStyle();
+    let showNameInput = !row.fixedName;
+    let nameFieldHtml = showNameInput
+        ? `<input id="cookNewName_${rowId}" type="text" placeholder="Name" value="${row.name || ""}" style="width:100%; box-sizing:border-box; height:22px; font-size:12px; font-weight:bold; font-family:'Lucida Console',monospace; ${fieldStyle}">`
+        : `<div style="width:100%; height:22px; box-sizing:border-box; display:flex; align-items:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:12px; font-weight:bold; ${fieldStyle} padding:0 8px;">${row.name}</div>`;
+    let dividerHtml = `<div style="height:1px; background:rgba(255,255,255,0.15); margin:10px 0;"></div>`;
+
+    // -/+ Stepper links/rechts der Mengeneingabe - exakt dieselbe Optik wie
+    // qtyMinusBtn/qtyPlusBtn eines bereits bestehenden Tiles in "Bestand
+    // anpassen 3" (siehe _cookMiniTileEditable3), nur dass hier noch kein
+    // Speisekammer-Item (und damit keine feste rowId+idx-Kombination)
+    // existiert - Klicks laufen daher ueber die neue _cookStepNewQty()
+    // statt _cookStepQtyV2().
+    let qtyMinusBtnNew = `<button type="button" onclick="_cookStepNewQty('${rowId}', -1)" style="position:relative; flex:0 0 18px; width:18px; height:18px; border:1.5px solid rgba(255,255,255,0.85); border-radius:6px; background:${catColor}; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.2); box-sizing:border-box; padding:0;"><span style="position:absolute; top:50%; left:50%; width:8px; height:2px; background:#fff; border-radius:1px; transform:translate(-50%,-50%);"></span></button>`;
+    let qtyPlusBtnNew = `<button type="button" onclick="_cookStepNewQty('${rowId}', 1)" style="position:relative; flex:0 0 18px; width:18px; height:18px; border:1.5px solid rgba(255,255,255,0.85); border-radius:6px; background:${catColor}; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.2); box-sizing:border-box; padding:0;"><span style="position:absolute; top:50%; left:50%; width:8px; height:2px; background:#fff; border-radius:1px; transform:translate(-50%,-50%);"></span><span style="position:absolute; top:50%; left:50%; width:2px; height:8px; background:#fff; border-radius:1px; transform:translate(-50%,-50%);"></span></button>`;
+
+    return `
+    <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+        ${beforeHtml}
+        <div style="padding:4px 0;">${_cookChevronDown("#bbb")}</div>
+        <div id="cookNewActivatedTile_${rowId}" onclick="_cookToggleAddTile('${rowId}')" style="position:relative; width:280px; max-width:100%; background:${catColor}; border-radius:20px; padding:14px; box-shadow:0 4px 8px rgba(0,0,0,0.15); color:white; box-sizing:border-box; font-family:'Lucida Console',monospace; cursor:pointer;">
+            <div onclick="event.stopPropagation();" style="display:flex; align-items:flex-start; gap:12px;">
+                <div id="cookNewAvatarWrap_${rowId}" style="flex-shrink:0; position:relative; width:60px; height:60px;">${_cookNewAvatarHtml(rowId, match)}</div>
+                <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:6px;">
+                    ${nameFieldHtml}
+                    <div style="height:32px; display:flex; align-items:center; gap:4px;">
+                        ${qtyMinusBtnNew}
+                        <input id="cookNewQty_${rowId}" type="number" min="0" step="any" placeholder="0" style="flex:1; min-width:0; height:32px; box-sizing:border-box; text-align:center; font-size:13px; ${fieldStyle} padding:0 3px;">
+                        ${qtyPlusBtnNew}
+                        ${unitSwiperHTML(`cookNewUnit_${rowId}`, row.unit || "", catColor, "", "on-tile compact-xs")}
+                    </div>
+                </div>
+            </div>
+            ${dividerHtml}
+            <div onclick="event.stopPropagation();" style="display:flex; align-items:flex-start; gap:12px;">
+                <div style="flex-shrink:0; width:60px; height:30px; display:flex;">
+                    <button type="button" id="cookNewMhdBtn_${rowId}" onclick="event.stopPropagation(); openCookNewMhdPopup('${rowId}')" style="width:100%; box-sizing:border-box; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:9px; ${fieldStyle} height:30px; margin:0; padding:0 4px; opacity:${newNoExpiry ? "0.5" : "1"}; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; -webkit-appearance:none; appearance:none;">${newMhdDisplay}</button>
+                    <input type="hidden" id="cookNewMhd_${rowId}" value="${newNoExpiry ? "" : newMhdOverride}" data-no-expiry="${newNoExpiry ? "1" : "0"}">
+                </div>
+                <div style="flex:1; min-width:0; height:30px; display:flex;">${_cookNewItemStateButtonHtml(rowId, match)}</div>
+            </div>
+            <div onclick="event.stopPropagation();" style="display:flex; align-items:flex-start; gap:12px; margin-top:6px;">
+                <div style="flex-shrink:0; width:60px; height:30px; display:flex;">
+                    <button type="button" id="cookNewMhdInf_${rowId}" onclick="event.stopPropagation(); _cookToggleNewItemNoExpiry('${rowId}')" title="kein MHD nötig" style="width:100%; height:30px; flex-shrink:0; box-sizing:border-box; margin:0; border:none; border-radius:8px; background:rgba(255,255,255,0.3); color:white; font-size:11px; font-weight:bold; cursor:pointer; padding:0; opacity:${newNoExpiry ? "1" : "0.55"}; box-shadow:${newNoExpiry ? "0 0 0 2px rgba(255,255,255,0.9) inset" : "none"};">∞</button>
+                </div>
+                <div id="cookNewStorageRowWrap_${rowId}" style="flex:1; min-width:0; height:32px; display:flex; align-items:center;">${_cookNewItemStorageRowHtml(rowId, match)}</div>
+            </div>
+        </div>
+    </div>`;
+}
+
+// Menge-Stepper (+/-) fuer eine neu anzulegende Zutat in "Bestand anpassen 3"
+// (siehe qtyMinusBtnNew/qtyPlusBtnNew in _cookEmptyPairHtml3 oben) - Pendant
+// zu _cookStepQtyV2() fuer bereits bestehende Tiles. Anders als dort gibt es
+// hier noch kein Speisekammer-Item und damit keine am Rendern feststehende
+// displayUnit: die aktuell gewaehlte Einheit wird deshalb bei jedem Klick
+// frisch aus dem Einheiten-Swiper (Hidden-Input cookNewUnit_${rowId})
+// ausgelesen statt wie bei _cookStepQtyV2 einmalig beim Rendern in den
+// onclick-Handler eingebacken zu werden - der Einheiten-Swiper einer neuen
+// Zeile hat (anders als bei einem bestehenden Tile) keinen onchange-
+// Re-render, ein fest eingebackener Schritt bliebe also nach einem
+// Einheitenwechsel stumpf falsch.
+function _cookStepNewQty(rowId, sign) {
+    let qtyEl = document.getElementById("cookNewQty_" + rowId);
+    if (!qtyEl) return;
+    let unitEl = document.getElementById("cookNewUnit_" + rowId);
+    let unit = unitEl ? unitEl.value : "";
+    let v = Math.max(0, (parseFloat(qtyEl.value) || 0) + sign * _openQtyStep(unit));
+    qtyEl.value = _roundQty(v, unit);
+}
+
+
+// Farbe der aktivierten "Nachher"-Kachel eines vorher NICHT im Bestand
+// vorhandenen Produkts (siehe _cookEmptyPairHtml oben): folgt - genau wie
+// bei einem bestehenden Tile in "Bestand anpassen 3" (siehe
+// _cookMiniTileEditable3()) - der Resthaltbarkeit des dort eingetragenen
+// MHD bzw. dem neutralen ∞-Blauton, SOBALD eine dieser beiden Entscheidungen
+// getroffen wurde. Ohne Entscheidung (frisch aktivierte, noch leere Kachel)
+// bleibt es bei der bisherigen neutralen Kategoriefarbe, da es hierfuer noch
+// keine Datengrundlage gibt.
+function _cookNewItemAccentColor(rowId, match) {
+    let noExpiry = !!(window.cookNewNoExpiry && window.cookNewNoExpiry[rowId]);
+    if (noExpiry) return getColor(Infinity);
+    let mhdOverride = (window.cookNewMhd && window.cookNewMhd[rowId]) || "";
+    if (mhdOverride) {
+        let d = parseDatePillValue(mhdOverride);
+        if (d) return getColor(d.getTime() - Date.now());
+    }
+    return match ? getCategoryColor(match.cat) : "#52aa5e";
+}
+
+// ∞-Umschalter fuer die aktivierte "Nachher"-Kachel eines vorher nicht im
+// Bestand vorhandenen Produkts (siehe infBtn in _cookEmptyPairHtml) - analog
+// zu _cookToggleTileNoExpiry() fuer ein bestehendes Tile, nur auf dem
+// eigenen window.cookNewNoExpiry-Entwurf.
+function _cookToggleNewItemNoExpiry(rowId) {
+    if (!window.cookNewNoExpiry) window.cookNewNoExpiry = {};
+    window.cookNewNoExpiry[rowId] = !window.cookNewNoExpiry[rowId];
+    _cookRenderNewItemMhdUI(rowId);
+}
+
+// Aktualisiert nach einer MHD-Entscheidung (Popup-Bestätigung/-Reset, siehe
+// openCookNewMhdPopup()) bzw. dem ∞-Umschalter oben NUR die davon
+// betroffenen Teile der aktivierten "Nachher"-Kachel - bewusst KEIN
+// kompletter innerHTML-Ersatz der ganzen Kachel (wie es _cookRenderTileList()
+// für ein bestehendes Tile macht): Name/Menge dieser Kachel stehen - anders
+// als bei einem bestehenden Tile - in keinem eigenen Entwurfs-State, sondern
+// nur direkt im DOM (siehe _confirmCookRecipe()); ein voller Rerender würde
+// hier also bereits eingetippte Werte kommentarlos verwerfen.
+function _cookRenderNewItemMhdUI(rowId) {
+    let row = (window.cookDraft || []).find(r => r.id === rowId);
+    if (!row) return;
+    let match = findCatalogMatch(row.name);
+    let noExpiry = !!(window.cookNewNoExpiry && window.cookNewNoExpiry[rowId]);
+    let mhdOverride = (window.cookNewMhd && window.cookNewMhd[rowId]) || "";
+    let accent = _cookNewItemAccentColor(rowId, match);
+
+    let tileEl = document.getElementById("cookNewActivatedTile_" + rowId);
+    if (tileEl) tileEl.style.background = accent;
+
+    let btn = document.getElementById("cookNewMhdBtn_" + rowId);
+    if (btn) {
+        btn.textContent = noExpiry ? "∞" : (mhdOverride || "TT|MM|JJ");
+        btn.style.opacity = noExpiry ? "0.5" : "1";
+    }
+    let hidden = document.getElementById("cookNewMhd_" + rowId);
+    if (hidden) {
+        hidden.value = noExpiry ? "" : mhdOverride;
+        hidden.dataset.noExpiry = noExpiry ? "1" : "0";
+    }
+    let infBtn = document.getElementById("cookNewMhdInf_" + rowId);
+    if (infBtn) {
+        infBtn.style.opacity = noExpiry ? "1" : "0.55";
+        infBtn.style.boxShadow = noExpiry ? "0 0 0 2px rgba(255,255,255,0.9) inset" : "none";
+    }
 }
 
 // Avatar-Kreis der aktivierten "Nachher"-Kachel (siehe _cookEmptyPairHtml):
@@ -26311,10 +26856,12 @@ function _cookToggleAddTile(rowId) {
     // wieder auf.
     if (!window.cookRowAdding[rowId] && window.cookNewItemState) delete window.cookNewItemState[rowId];
     if (!window.cookRowAdding[rowId] && window.cookNewItemStorage) delete window.cookNewItemStorage[rowId];
+    if (!window.cookRowAdding[rowId] && window.cookNewMhd) delete window.cookNewMhd[rowId];
+    if (!window.cookRowAdding[rowId] && window.cookNewNoExpiry) delete window.cookNewNoExpiry[rowId];
     let row = (window.cookDraft || []).find(r => r.id === rowId);
     let container = document.getElementById("cookTiles_" + rowId);
     if (!row || !container) return;
-    container.innerHTML = _cookEmptyPairHtml(rowId, row);
+    container.innerHTML = window.cookReviewV3Mode ? _cookEmptyPairHtml3(rowId, row) : _cookEmptyPairHtml(rowId, row);
     if (window.cookRowAdding[rowId]) initUnitSwiper(`cookNewUnit_${rowId}`);
 }
 
@@ -26391,8 +26938,21 @@ function _cookSetQtyValue(rowId, idx) {
     if (isNaN(v) || v < 0) v = 0;
     let u = unitEl ? unitEl.value : (item.qtyUnit || "");
     if (window.cookTileUnit[rowId]) window.cookTileUnit[rowId][idx] = u;
-    let base = _cookUnitToBase(v, u);
-    let inItemUnit = _roundQty(Math.max(0, Math.min(_cookBaseToUnit(base.val, item.qtyUnit), parseFloat(item.qty) || 0)), item.qtyUnit);
+    // BUGFIX: vorher immer _cookBaseToUnit(_cookUnitToBase(v, u).val, item.qtyUnit)
+    // - bei Stückzahl (u === "" oder item.qtyUnit === "") wurde der Wert dabei
+    // faelschlich ueber den kg/l-Basisfaktor mitgerechnet (siehe
+    // _cookConvertDisplayQty oben), wodurch die +/- Stepper-Buttons bei
+    // Stückzahl wirkungslos blieben, weil der Schritt in der Rundung der
+    // Ziel-Einheit unterging.
+    // Feature: Menge darf jetzt auch ÜBER die ursprüngliche Menge (item.qty)
+    // hinaus erhöht werden - z.B. um einen falsch erkannten/eingetragenen
+    // Ausgangsbestand direkt hier zu korrigieren, statt separat in der
+    // Speisekammer nachbessern zu müssen (siehe deltaBadge in
+    // _cookTilePairHtml, das eine solche Erhöhung grün als "+X" anzeigt).
+    // Vorher wurde hier hart auf item.qty gekappt (Math.min) - jede Eingabe
+    // über dem Ausgangswert wurde also stillschweigend wieder auf den
+    // Ausgangswert zurückgesetzt.
+    let inItemUnit = _roundQty(Math.max(0, _cookConvertDisplayQty(v, u, item.qtyUnit)), item.qtyUnit);
     window.cookTileVals[rowId][idx] = inItemUnit;
 }
 
@@ -26532,7 +27092,7 @@ function _cookRenderTiles(rowId, resetSelection) {
     }
 
     if (tiles.length === 0) {
-        container.innerHTML = _cookEmptyPairHtml(rowId, row);
+        container.innerHTML = window.cookReviewV3Mode ? _cookEmptyPairHtml3(rowId, row) : _cookEmptyPairHtml(rowId, row);
         initUnitSwiper(`cookNewUnit_${rowId}`);
         row._tileMap = null;
         return;
@@ -26616,7 +27176,7 @@ function _renderCookReviewModal() {
             <div style="padding:0 20px;">
                 <p class="sub" style="margin:0 0 14px 0;">${window.cookReviewV2Mode ? "Vorschau „Bestand ändern 2“ – Kacheln im Speisekammer-Look. " : ""}antippen: unverändert (translucent) / entfernen (dotted) / hinzufügen bzw. anpassen (opaque)</p>
             </div>
-            <div id="cookReviewList" style="background:#f2f2f2; border-top:1px solid #eee; border-bottom:1px solid #eee; padding:12px 0 2px 0; max-height:50vh; overflow-y:auto;">
+            <div id="cookReviewList" style="background:#dbdcc2; border-top:1px solid rgba(0,0,0,0.1); border-bottom:1px solid rgba(0,0,0,0.1); padding:12px 0 2px 0; max-height:50vh; overflow-y:auto;">
                 ${rowsHtml}
             </div>
             <div style="padding:12px 20px 0 20px;">
@@ -26672,6 +27232,8 @@ function _removeCookRow(id) {
     if (window.cookTileUnit) delete window.cookTileUnit[id];
     if (window.cookTileMhd) delete window.cookTileMhd[id];
     if (window.cookTileNoExpiry) delete window.cookTileNoExpiry[id];
+    if (window.cookNewMhd) delete window.cookNewMhd[id];
+    if (window.cookNewNoExpiry) delete window.cookNewNoExpiry[id];
     if (window.cookTileBrowseIndex) delete window.cookTileBrowseIndex[id];
     if (window.cookRowAdding) delete window.cookRowAdding[id];
     let el = document.getElementById("cookRow_" + id);
@@ -26795,8 +27357,12 @@ function _confirmCookRecipe() {
                 let target = window.cookTileVals[row.id][idx];
                 if (target === undefined) return;
                 let original = parseFloat(item.qty) || 0;
-                target = _roundQty(Math.max(0, Math.min(target, original)), item.qtyUnit);
-                let qtyChanged = target < original;
+                // Feature: Erhöhung über "original" hinaus jetzt zugelassen
+                // (siehe _cookSetQtyValue) - hier deshalb kein Math.min(...,
+                // original) mehr, sonst würde eine bewusste Korrektur nach
+                // oben beim Bestätigen wieder verworfen.
+                target = _roundQty(Math.max(0, target), item.qtyUnit);
+                let qtyChanged = target !== original;
                 let openState = window.cookTileOpenState[row.id] && window.cookTileOpenState[row.id][idx];
                 let mhdOverrideVal = window.cookTileMhd[row.id] && window.cookTileMhd[row.id][idx];
                 let noExpiryVal = !!(window.cookTileNoExpiry[row.id] && window.cookTileNoExpiry[row.id][idx]);
@@ -26812,10 +27378,20 @@ function _confirmCookRecipe() {
                 if (!qtyChanged && !openState && !mhdOverrideVal && !noExpiryVal) return; // wirklich keine Änderung an diesem Tile
 
                 if (qtyChanged) {
-                    let takeOrig = _roundQty(original - target, item.qtyUnit);
                     anyChange = true;
-                    addHistoryEntry(pantry[realIdx], "eaten", takeOrig);
+                    if (target < original) {
+                        // Echter Verbrauch - wie bisher als "eaten" in der
+                        // Historie festgehalten.
+                        let takeOrig = _roundQty(original - target, item.qtyUnit);
+                        addHistoryEntry(pantry[realIdx], "eaten", takeOrig);
+                    }
+                    // target > original: bewusste Erhöhung/Korrektur des
+                    // Bestands (siehe deltaBadge in _cookTilePairHtml) - kein
+                    // Verbrauch, daher KEIN Historien-Eintrag, der Bestand
+                    // wird weiter unten (pantry[realIdx].qty = ...) einfach
+                    // auf den neuen, höheren Wert gesetzt.
                 }
+
 
                 if (target <= 0) {
                     pantry.splice(realIdx, 1);
