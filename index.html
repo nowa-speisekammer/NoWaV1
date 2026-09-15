@@ -8677,6 +8677,10 @@ function enterPantryEditMode() {
     let oldRects = _capturePantryTileRects();
     window.pantryEditMode = true;
     window.pantryEditPending = {};
+    // Reihenfolge einfrieren, siehe Kommentar in renderPantry() - ab jetzt
+    // bis exitPantryEditMode() bleibt jede Kachel an ihrer aktuellen Stelle,
+    // unabhaengig davon, wie sich ihre Restlaufzeit waehrenddessen aendert.
+    window.pantryEditModeOrder = pantry.map(p => p.uid);
     renderPantry();
     _animatePantryTileFlip(oldRects);
     updatePantryActionBar();
@@ -8700,6 +8704,7 @@ function exitPantryEditMode() {
     let oldRects = _capturePantryTileRects();
     window.pantryEditMode = false;
     window.pantryEditPending = {};
+    window.pantryEditModeOrder = null; // Sortierung ab jetzt wieder live nach Restlaufzeit
     renderPantry();
     _animatePantryTileFlip(oldRects);
     updatePantryActionBar();
@@ -8893,6 +8898,16 @@ function _mhdPopupSyncGridTile(uid) {
         circleEl.setAttribute("stroke-dashoffset", strokeDashoffset);
     }
     tileEl.querySelectorAll(".button-overlay button").forEach(btn => { btn.style.background = ringColor; });
+    // Menge-+/--Buttons (siehe qtyEditHtml in renderPantry()) hingen bisher
+    // farblich fest auf dem Stand ihres letzten renderPantry()-Durchlaufs,
+    // weil hier bisher nur die button-overlay-Buttons (eat/open) und die
+    // MHD-+/--Buttons (siehe adjustPantryMhdInline()) mitgezogen wurden -
+    // eine reine MHD-Änderung liess die Menge-Buttons dadurch farblich
+    // hinter der (schon aktualisierten) Kachel zurück.
+    let qtyMinusEl = document.getElementById(`pantryQtyMinus_${uid}`);
+    if (qtyMinusEl) qtyMinusEl.style.background = bg;
+    let qtyPlusEl = document.getElementById(`pantryQtyPlus_${uid}`);
+    if (qtyPlusEl) qtyPlusEl.style.background = bg;
 }
 
 // MHD direkt aus dem Inline-Datums-Pill der Kachel übernehmen - gleiches
@@ -10348,7 +10363,30 @@ function updatePantryActionBar() {
 }
 
 function renderPantry() {
-    pantry.sort((a, b) => getRemainingTime(a) - getRemainingTime(b));
+    // Waehrend des Bearbeitungsmodus (enterPantryEditMode(), egal ob ueber
+    // den Stift oben oder Long-Press betreten) bewusst NICHT laufend nach
+    // Restlaufzeit neu sortieren - jede Restlaufzeit-Aenderung (z.B. ueber
+    // die +/--MHD-Buttons einer Kachel) wuerde die Kachel sonst sofort an
+    // eine neue Position springen lassen, mitten im Antippen. Weitere Klicks
+    // treffen dann leicht das falsche (an die alte Stelle nachgerueckte)
+    // Produkt. Stattdessen wird die Reihenfolge beim Betreten des Edit-Modus
+    // einmal eingefroren (window.pantryEditModeOrder, siehe
+    // enterPantryEditMode()) und erst beim Verlassen (exitPantryEditMode())
+    // wieder freigegeben - bis dahin bleibt jede Kachel an ihrem Platz.
+    if (window.pantryEditMode && window.pantryEditModeOrder) {
+        let orderIndex = new Map(window.pantryEditModeOrder.map((uid, i) => [uid, i]));
+        pantry.sort((a, b) => {
+            let ia = orderIndex.has(a.uid) ? orderIndex.get(a.uid) : Infinity;
+            let ib = orderIndex.has(b.uid) ? orderIndex.get(b.uid) : Infinity;
+            if (ia !== ib) return ia - ib;
+            // Fallback fuer Produkte, die es beim Einfrieren noch nicht gab
+            // (z.B. waehrend des Edit-Modus neu hinzugefuegt) - die landen
+            // sonst alle gleichauf ganz hinten, statt sinnvoll sortiert.
+            return getRemainingTime(a) - getRemainingTime(b);
+        });
+    } else {
+        pantry.sort((a, b) => getRemainingTime(a) - getRemainingTime(b));
+    }
     let html = "";
     let color = getActionBarColor();
     let term = pantrySearchTerm.trim().toLowerCase();
@@ -18554,8 +18592,7 @@ function refreshAfterPantryChange() {
 // aktualisiert (dort ist ein Neuzeichnen unsichtbar, da vom Popup verdeckt).
 function updateMhdTileInline(uid) {
     if (currentMHDKey === null) return; // Popup gar nicht offen -> nichts zu patchen
-    let idx = pantry.findIndex(p => p.uid === uid);
-    let it = pantry[idx];
+    let it = pantry.find(p => p.uid === uid);
     if (!it) return;
 
     let remaining = getRemainingTime(it);
@@ -18565,12 +18602,22 @@ function updateMhdTileInline(uid) {
     let ratio = Math.max(0, Math.min(1, remaining / (maxDays * 86400000)));
     let strokeDashoffset = 439.82 * (1 - ratio);
 
-    let tileEl = document.getElementById("mhd-product-tile-" + idx);
+    // WICHTIG: über data-uid suchen statt über "mhd-product-tile-"+idx - der
+    // Index in pantry[] ändert sich, sobald renderPantry() (wird VOR diesem
+    // Aufruf bereits ausgeführt, siehe adjustPantryMhdInline() etc.) das Array
+    // neu nach Restlaufzeit sortiert. Die im DOM stehende Kachel wurde aber
+    // beim letzten showMHD()-Aufbau mit dem DAMALIGEN Index beschriftet - nach
+    // einer Umsortierung zeigte "mhd-product-tile-"+idx dadurch ins Leere oder
+    // auf die falsche Kachel, wodurch nur noch die (uid-basiert gefundenen)
+    // +/--Buttons sichtbar reagierten, die Kachel-Hintergrundfarbe aber
+    // hängen blieb.
+    let tileEl = document.querySelector('.mhd-edit-tile[data-uid="' + uid + '"]');
     if (tileEl) {
         tileEl.style.background = bg;
+        tileEl.style.setProperty("--tile-border-color", colorToRgba(bg, 0.45));
         tileEl.querySelectorAll(".button-overlay button").forEach(btn => { btn.style.background = ringColor; });
     }
-    let circleEl = document.getElementById("mhd-svg-circle-" + idx);
+    let circleEl = tileEl ? tileEl.querySelector("svg circle") : null;
     if (circleEl) {
         circleEl.setAttribute("stroke", ringColor);
         circleEl.setAttribute("stroke-dashoffset", strokeDashoffset);
@@ -18580,6 +18627,15 @@ function updateMhdTileInline(uid) {
     if (minusBtn) { minusBtn.style.background = bg; minusBtn.style.visibility = it.noExpiry ? "hidden" : "visible"; }
     let plusBtn = document.getElementById("mhdPlusBtn_" + uid);
     if (plusBtn) { plusBtn.style.background = bg; plusBtn.style.visibility = it.noExpiry ? "hidden" : "visible"; }
+
+    // Menge-+/--Buttons dieser Popup-Kachel (siehe qtyEditHtml in showMHD())
+    // - gleicher Nachzieh-Bedarf wie bei den Grid-Kacheln (siehe
+    // _mhdPopupSyncGridTile()), sonst blieben sie nach einer reinen
+    // MHD-Änderung farblich auf dem alten Stand stehen.
+    let mhdQtyMinusEl = document.getElementById(`mhdQtyMinus_${uid}`);
+    if (mhdQtyMinusEl) mhdQtyMinusEl.style.background = bg;
+    let mhdQtyPlusEl = document.getElementById(`mhdQtyPlus_${uid}`);
+    if (mhdQtyPlusEl) mhdQtyPlusEl.style.background = bg;
 
     // Datums-Pille (siehe mhdEditHtml in showMHD()): jetzt kombinierte Datum/
     // Tage-Anzeige (siehe _pantryMhdComboText()) statt eines reinen Datumstexts
@@ -18599,7 +18655,7 @@ function updateMhdTileInline(uid) {
         dateInput.style.opacity = it.noExpiry ? "0.5" : "1";
     }
 
-    let expiredEl = document.getElementById("mhd-expired-" + idx);
+    let expiredEl = tileEl ? tileEl.querySelector(".expired-stamp") : null;
     if (expiredEl) {
         expiredEl.style.background = bg;
         expiredEl.style.display = (remaining <= 0) ? "block" : "none";
@@ -18613,7 +18669,7 @@ function updateMhdTileInline(uid) {
     // man merkte also nicht, dass die Eingabe überhaupt etwas bewirkt hat.
     // Jetzt wird der Sticker hier direkt live nachgezogen: vorhanden + Text
     // gesetzt, falls ein Label existiert; entfernt, falls es (wieder) leer ist.
-    let circleContainerEl = document.getElementById("mhd-circle-container-" + idx);
+    let circleContainerEl = tileEl ? tileEl.querySelector(".circle-container") : null;
     if (circleContainerEl && pantryLabelsEnabled) {
         let stickerEl = circleContainerEl.querySelector(".pantry-label-sticker");
         let hasLabel = !!(it.label && it.label.trim());
@@ -18879,7 +18935,7 @@ function showMHD(uid) {
         // Label-Sektion) wechselt weiterhin abhängig von window.mhdEditMode.
         return `
             <div class="mhd-tile-wrap" style="display:flex; flex-direction:column; align-items:center; scroll-snap-align:center; flex-shrink:0;">
-                <div class="product mhd-edit-tile${window.mhdEditMode ? " mhd-editing" : ""}" id="mhd-product-tile-${idx}" style="background:${bg}; --tile-border-color:${colorToRgba(bg, 0.45)};" onclick="toggleOverlay(${idx}, event, 'mhd-product-tile-')">
+                <div class="product mhd-edit-tile${window.mhdEditMode ? " mhd-editing" : ""}" id="mhd-product-tile-${idx}" data-uid="${it.uid}" style="background:${bg}; --tile-border-color:${colorToRgba(bg, 0.45)};" onclick="toggleOverlay(${idx}, event, 'mhd-product-tile-')">
                     <div class="circle-container" id="mhd-circle-container-${idx}">
                         ${hasRealImage(it.image) ? `<img class="${isPhotoLoading(it.image) ? "photo-loading" : ""}" src="${imgSrcFor(it.image)}" data-photo-id="${photoRefId(it.image)}">` : `<div class="no-image-placeholder"></div>`}
                         <svg viewBox="0 0 160 160">

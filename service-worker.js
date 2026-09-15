@@ -1,7 +1,7 @@
 // Automatisch generiert von generate_app.py - nicht manuell bearbeiten.
 // Bei jedem Skriptlauf aendert sich CACHE_VERSION, wodurch alte Caches
 // beim naechsten Seitenaufruf automatisch ersetzt werden.
-const CACHE_VERSION = "20260915-104506";
+const CACHE_VERSION = "20260915-114929";
 const CACHE_NAME = "nowa-cache-" + CACHE_VERSION;
 
 // Alles, was fuer die Offline-Nutzung vorab gecacht werden soll.
@@ -128,7 +128,7 @@ self.addEventListener("fetch", (event) => {
     // legen Video + Text/Link kurz in einem eigenen Cache ab und leiten dann
     // per normalem GET auf die App weiter, die das beim Start abholt (siehe
     // checkForSharedVideoOnLoad() im Haupt-Skript).
-    if (req.method === "POST") {
+    if (req.method === "POST" && new URL(req.url).origin === self.location.origin) {
         event.respondWith((async () => {
             try {
                 const formData = await req.clone().formData();
