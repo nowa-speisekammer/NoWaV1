@@ -9122,6 +9122,7 @@ function openPantryPricePopup(uid) {
 
 function _pantryPricePopupAccentColor() {
     let s = window._pantryPricePopupState;
+    if (s && s.recipeIngIdx !== undefined && s.recipeIngIdx !== null) return getActionBarColor();
     // "neu"-Kachel der Bestands-Review (siehe openStockUpdateNewPricePopup()):
     // es gibt noch kein pantry[]-Item, die Akzentfarbe kommt daher direkt aus
     // dem Katalog-Treffer zum erkannten Produktnamen.
@@ -9209,6 +9210,17 @@ function _pantryPricePopupReset() {
 function _pantryPricePopupCommit() {
     let s = window._pantryPricePopupState;
     if (!s) return;
+    // Rezept-Zutat (siehe openRecipeIngredientPricePopup()): schreibt
+    // priceMode/price direkt in den Zutaten-Entwurf des Rezept-Formulars.
+    if (s.recipeIngIdx !== undefined && s.recipeIngIdx !== null) {
+        let ing = (window.recipeIngredients || [])[s.recipeIngIdx];
+        if (!ing) return;
+        if (s.mode === "ignore") { ing.priceMode = "ignore"; delete ing.price; }
+        else if (s.digits) { ing.priceMode = "fixed"; ing.price = parseInt(s.digits, 10) / 100; }
+        else { ing.priceMode = "auto"; delete ing.price; }
+        _refreshRecipeIngPriceButton(s.recipeIngIdx);
+        return;
+    }
     // Entwurfs-Zeile der Bestands-Review statt echtem Pantry-Item (siehe
     // openStockUpdateNewPricePopup()) - nichts speichern/saveCustomData(),
     // der Wert wandert erst beim Uebernehmen der Review weiter.
@@ -9256,6 +9268,19 @@ function _pantryPricePopupRenderHtml() {
         ? (cents / 100).toFixed(2).replace(".", ",") + " €"
         : "– €";
 
+    // Nur fuer Rezept-Zutaten (siehe openRecipeIngredientPricePopup()): neben
+    // dem Festpreis stehen "aus Speisekammer" (anteilig aus dem
+    // Speisekammer-Preis rechnen) und "vernachlässigbar" (zaehlt als 0, z.B.
+    // Salz/Pfeffer) zur Wahl.
+    let isRecipeIng = (s.recipeIngIdx !== undefined && s.recipeIngIdx !== null);
+    let activeMode = isRecipeIng ? (s.digits ? "fixed" : (s.mode || "auto")) : null;
+    let modeBtn = (label, mode) => `<button type="button" onclick="_recipePricePopupSetMode('${mode}')" style="flex:1 1 0; min-width:0; margin:0; height:30px; border:none; border-radius:9px; background:${activeMode === mode ? bg : "rgba(0,0,0,0.08)"}; color:${activeMode === mode ? "#fff" : "#333"}; font-size:10.5px; font-weight:bold; cursor:pointer;">${label}</button>`;
+    let modeRowHtml = isRecipeIng ? `
+        <div style="display:flex; gap:6px; margin-top:8px;">
+            ${modeBtn("aus Speisekammer", "auto")}${modeBtn("vernachlässigbar", "ignore")}
+        </div>
+        <div style="text-align:center; font-size:9.5px; opacity:0.55; margin-top:6px; line-height:1.3;">Zahl eintippen = Festpreis für diese Menge; sonst wird anteilig aus der Speisekammer gerechnet.</div>` : "";
+
     let chip = (label, addCents) => `<button type="button" onclick="_pantryPricePopupChip(${addCents})" style="flex:1 1 0; min-width:0; margin:0; height:28px; border:none; border-radius:8px; background:rgba(0,0,0,0.08); color:#333; font-size:11px; font-weight:bold; cursor:pointer;">${label}</button>`;
     let digitBtn = (label, onclick) => `<button type="button" onclick="${onclick}" style="margin:0; height:44px; border:none; border-radius:11px; background:${bg}; color:#fff; font-size:17px; font-weight:bold; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.15);">${label}</button>`;
 
@@ -9277,6 +9302,7 @@ function _pantryPricePopupRenderHtml() {
         <div style="display:flex; gap:6px; margin-top:12px;">
             ${chip("+0,10", 10)}${chip("+0,50", 50)}${chip("+1€", 100)}${chip("+5€", 500)}
         </div>
+        ${modeRowHtml}
         ${numpadHtml}
         <div style="display:flex; align-items:center; justify-content:center; margin-top:14px;">
             <button type="button" onclick="_pantryPricePopupReset()" title="Auf Ausgangswert zurücksetzen" style="display:flex; align-items:center; justify-content:center; width:36px; height:36px; border:none; border-radius:11px; background:rgba(0,0,0,0.08); cursor:pointer; touch-action:manipulation;"><img src="data:image/png;base64,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" style="width:16px; height:16px; object-fit:contain; opacity:0.65;"></button>
@@ -13878,19 +13904,26 @@ function confirmStockUpdateReview() {
     proceedToStockUpdateNewItems();
 }
 
-// Letzter Schritt des Abgleichs: komplett neue, noch unbekannte Produkte
-// (falls welche übernommen wurden) laufen ganz normal in die bestehende
-// Erkennungs-Review (siehe openAiRecognitionReview()) - dort lassen sie sich
-// wie bei "Foto erkennen" einzeln prüfen, Lagerort/MHD ergänzen und
-// übernehmen. Gibt es keine, geht es direkt zurück zur Speisekammer.
+// Letzter Schritt des Abgleichs: komplett neue, auf den Fotos erkannte
+// Produkte werden jetzt DIREKT in die Speisekammer geschrieben. Frueher lief
+// dieser Fall noch einmal durch die komplette Erkennungs-Review ("Erkannte
+// Lebensmittel", siehe openAiRecognitionReview()) - ein reiner Doppel-Check:
+// Name, Menge, Einheit, MHD und Preis lassen sich inzwischen bereits auf der
+// "neu"-Kachel der Review selbst pruefen und korrigieren, ein zweiter
+// Bestaetigungs-Bildschirm mit denselben Feldern war damit redundant.
 function proceedToStockUpdateNewItems() {
     let newItems = stockUpdateNewItemsPending;
     stockUpdateNewItemsPending = [];
     if (newItems && newItems.length) {
-        openAiRecognitionReview(newItems);
-    } else {
-        renderHome();
+        newItems.forEach(it => {
+            let entry = _pantryEntryFromAiItem(it);
+            recordMoneySpent(entry.preis);
+            pantry.push(entry);
+        });
+        saveCustomData();
+        showToast(`${newItems.length} neue(s) Produkt(e) hinzugefügt`);
     }
+    renderHome();
 }
 
 // ── KI-Rezept aus Foto eines fertigen Gerichts (siehe "Foto -> Rezept"-Button
@@ -18091,6 +18124,67 @@ function findCatalogMatch(name) {
 // bei unbekannten Produkten ist es die einzige Möglichkeit, überhaupt einen
 // "open"-Button für dieses Item zu bekommen (ohne Angabe bleibt es null, wie
 // bisher).
+// Baut aus einer Zeile der Erkennungs-Review (bzw. aus einem neu erkannten
+// Produkt des Bestandsabgleichs, siehe proceedToStockUpdateNewItems()) den
+// fertigen Speisekammer-Eintrag. Frueher stand diese Logik nur inline in
+// confirmAiRecognition() - ausgelagert, damit neue Produkte auch OHNE die
+// Review-Maske ("Erkannte Lebensmittel") direkt angelegt werden koennen.
+// Erwartet mindestens {name, menge, einheit}; alle weiteren Felder (mhd,
+// noExpiry, preis, storage, customImage, openedDays, cutOption/cutDays,
+// isLeftover/leftoverNote, packaging) sind optional.
+function _pantryEntryFromAiItem(it) {
+    let match = findCatalogMatch(it.name);
+    let storage = it.storage || "";
+    // "kein Ablaufdatum nötig" (it.noExpiry): keinen Lagerort-Fallback
+    // erzwingen - genau wie bei finishAddWithNoExpiry() bleibt storage
+    // hier bewusst leer, das Item bekommt keine erfundene Restlaufzeit
+    // (siehe getRemainingTime).
+    if (!storage && !it.noExpiry) {
+        let storageOptions = storageOptionsForMatch(match);
+        storage = match ? (storageOptions.includes("kuehlschrank") ? "kuehlschrank" : storageOptions[0]) : (it.isLeftover ? "kuehlschrank" : "keller");
+    }
+
+    let manualDays = null;
+    if (it.mhd) {
+        let parsed = parseDatePillValue(it.mhd);
+        if (parsed) manualDays = Math.ceil((parsed.getTime() - Date.now()) / 86400000);
+    }
+    if (manualDays === null && !match && !it.noExpiry) manualDays = 7; // Fallback wie bisher, wenn kein MHD erkannt/eingetragen wurde
+
+    let entry;
+    if (match && !it.isLeftover) {
+        // Bekannte Produkte haben pro Lagerort ihre eigene hinterlegte
+        // "geöffnet"-Haltbarkeit im Sortiment - die wird wie gewohnt
+        // automatisch verwendet, eine manuelle Eingabe ist hier bewusst
+        // nicht vorgesehen (siehe UI: aiOpenedWrap bleibt für Treffer
+        // ausgeblendet).
+        entry = { uid: generatePantryUid(), name: match.name, image: it.customImage || match.image, storage: storage, storedAt: Date.now(), manualDays: manualDays };
+
+        // Verpackt/unverpackt-Auswahl (siehe aiPackagingToggleHtml): kein
+        // eigener geschlossener Zustand hinterlegt -> wie im Navigator
+        // automatisch "unverpackt" annehmen. Sonst zählt die getroffene
+        // Auswahl (Default beim Öffnen der Review: "verpackt").
+        let matchKey = match.name.toLowerCase();
+        let hasClosedState = !!(shelfLifeDays[matchKey] && Object.keys(shelfLifeDays[matchKey]).length);
+        if (!hasClosedState || it.packaging === "unverpackt") entry.opened = true;
+    } else {
+        entry = { uid: generatePantryUid(), name: it.name.trim(), image: it.customImage || (match ? match.image : NOPIC_IMAGE), storage: storage, manualDays: manualDays, openedDays: (it.openedDays !== null && it.openedDays !== undefined) ? it.openedDays : null, cutOption: !!it.cutOption, cutDays: (it.cutOption && it.cutDays !== null && it.cutDays !== undefined) ? it.cutDays : null, storedAt: Date.now() };
+    }
+    if (it.noExpiry) entry.noExpiry = true;
+    entry.qty = String(it.menge);
+    entry.qtyUnit = it.einheit;
+    // Preis wird bewusst NUR am Pantry-Eintrag gespeichert (nicht im
+    // Sortiment - siehe Kommentar im Review-Formular), da er pro Einkauf
+    // variiert. In der Speisekammer selbst wird er nirgends prominent
+    // angezeigt, nur als kleine Notiz im Info-Popup (siehe showMHD()).
+    if (it.preis !== null && it.preis !== undefined) entry.preis = it.preis;
+    if (it.isLeftover) {
+        entry.isLeftover = true;
+        if ((it.leftoverNote || "").trim()) entry.leftoverNote = it.leftoverNote.trim();
+    }
+    return entry;
+}
+
 function confirmAiRecognition() {
     let toAdd = aiRecognizedItems.filter(it => it.include && it.name.trim());
     if (!toAdd.length) { showToast("Nichts ausgewählt"); return; }
@@ -18109,56 +18203,8 @@ function confirmAiRecognition() {
     }
 
     toAdd.forEach(it => {
-        let match = findCatalogMatch(it.name);
-        let storage = it.storage || "";
-        // "kein Ablaufdatum nötig" (it.noExpiry): keinen Lagerort-Fallback
-        // erzwingen - genau wie bei finishAddWithNoExpiry() bleibt storage
-        // hier bewusst leer, das Item bekommt keine erfundene Restlaufzeit
-        // (siehe getRemainingTime).
-        if (!storage && !it.noExpiry) {
-            let storageOptions = storageOptionsForMatch(match);
-            storage = match ? (storageOptions.includes("kuehlschrank") ? "kuehlschrank" : storageOptions[0]) : (it.isLeftover ? "kuehlschrank" : "keller");
-        }
-
-        let manualDays = null;
-        if (it.mhd) {
-            let parsed = parseDatePillValue(it.mhd);
-            if (parsed) manualDays = Math.ceil((parsed.getTime() - Date.now()) / 86400000);
-        }
-        if (manualDays === null && !match && !it.noExpiry) manualDays = 7; // Fallback wie bisher, wenn kein MHD erkannt/eingetragen wurde
-
-        let entry;
-        if (match && !it.isLeftover) {
-            // Bekannte Produkte haben pro Lagerort ihre eigene hinterlegte
-            // "geöffnet"-Haltbarkeit im Sortiment - die wird wie gewohnt
-            // automatisch verwendet, eine manuelle Eingabe ist hier bewusst
-            // nicht vorgesehen (siehe UI: aiOpenedWrap bleibt für Treffer
-            // ausgeblendet).
-            entry = { uid: generatePantryUid(), name: match.name, image: it.customImage || match.image, storage: storage, storedAt: Date.now(), manualDays: manualDays };
-
-            // Verpackt/unverpackt-Auswahl (siehe aiPackagingToggleHtml): kein
-            // eigener geschlossener Zustand hinterlegt -> wie im Navigator
-            // automatisch "unverpackt" annehmen. Sonst zählt die getroffene
-            // Auswahl (Default beim Öffnen der Review: "verpackt").
-            let matchKey = match.name.toLowerCase();
-            let hasClosedState = !!(shelfLifeDays[matchKey] && Object.keys(shelfLifeDays[matchKey]).length);
-            if (!hasClosedState || it.packaging === "unverpackt") entry.opened = true;
-        } else {
-            entry = { uid: generatePantryUid(), name: it.name.trim(), image: it.customImage || (match ? match.image : NOPIC_IMAGE), storage: storage, manualDays: manualDays, openedDays: (it.openedDays !== null && it.openedDays !== undefined) ? it.openedDays : null, cutOption: !!it.cutOption, cutDays: (it.cutOption && it.cutDays !== null && it.cutDays !== undefined) ? it.cutDays : null, storedAt: Date.now() };
-        }
-        if (it.noExpiry) entry.noExpiry = true;
-        entry.qty = String(it.menge);
-        entry.qtyUnit = it.einheit;
-        // Preis wird bewusst NUR am Pantry-Eintrag gespeichert (nicht im
-        // Sortiment - siehe Kommentar im Review-Formular), da er pro Einkauf
-        // variiert. In der Speisekammer selbst wird er nirgends prominent
-        // angezeigt, nur als kleine Notiz im Info-Popup (siehe showMHD()).
-        if (it.preis !== null && it.preis !== undefined) entry.preis = it.preis;
+        let entry = _pantryEntryFromAiItem(it);
         recordMoneySpent(entry.preis);
-        if (it.isLeftover) {
-            entry.isLeftover = true;
-            if ((it.leftoverNote || "").trim()) entry.leftoverNote = it.leftoverNote.trim();
-        }
         pantry.push(entry);
     });
 
@@ -24051,8 +24097,15 @@ function openCreateRecipe(prefill) {
         let qtyLabel = (qtyMode !== "none" && ing.qty) ? ` <span style="font-weight:bold; font-size:0.8em; color:${color}; background:${colorToRgba(color, 0.14)}; border-radius:6px; padding:1px 5px;">${ing.qty}${ing.unit ? "\u2009" + ing.unit : ""}</span>` : "";
         let customTag = ing.custom ? ` <span style="font-size:0.68em; opacity:0.6; font-style:italic; background:${colorToRgba(color, 0.1)}; color:${color}; border-radius:5px; padding:1px 4px;">custom</span>` : "";
         let optionalTag = ing.optional ? ` <span style="font-size:0.68em; opacity:0.55; font-style:italic; background:rgba(82,170,94,0.12); color:#3f8a49; border-radius:5px; padding:1px 4px;">optional</span>` : "";
+        // Preis-Status der Zutat (siehe _recipeIngredientCost()) - fehlt er,
+        // faellt das hier sofort auf, statt erst beim Portionspreis auf der
+        // Detailseite.
+        let priceInfo = _recipeIngredientCost(ing);
+        let priceTagColor = priceInfo.source === "missing" ? "#c0392b" : color;
+        let priceTagText = priceInfo.source === "missing" ? "Preis?" : (priceInfo.source === "ignore" ? "0\u2009€" : _formatEuro(priceInfo.cost));
+        let priceTag = ` <span onclick="event.stopPropagation(); openRecipeIngredientPricePopup(${idx})" title="Preis für den Portionspreis festlegen" style="font-size:0.68em; font-weight:bold; background:${colorToRgba(priceTagColor, 0.13)}; color:${priceTagColor}; border-radius:5px; padding:1px 5px; cursor:pointer;">${priceTagText}</span>`;
         return `<div style="display:flex; align-items:center; gap:8px; padding:11px 14px; border-bottom:1px solid ${colorToRgba(color, 0.12)};">
-            <span style="flex:1; font-size:14px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color:#222; display:flex; align-items:center; gap:5px; flex-wrap:wrap;"><b>${ing.name}</b>${qtyLabel}${customTag}${optionalTag}</span>
+            <span style="flex:1; font-size:14px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color:#222; display:flex; align-items:center; gap:5px; flex-wrap:wrap;"><b>${ing.name}</b>${qtyLabel}${customTag}${optionalTag}${priceTag}</span>
             <button onclick="editRecipeIngredientQty(${idx})" style="background:${colorToRgba(color, 0.12)}; border:none; border-radius:8px; cursor:pointer; width:28px; height:28px; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><img src="data:image/png;base64,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" style="width:12px; height:12px; opacity:0.75;"></button>
             <button onclick="removeRecipeIngredient(${idx})" style="background:${colorToRgba("#c0392b", 0.12)}; border:none; border-radius:8px; cursor:pointer; width:28px; height:28px; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><img src="data:image/png;base64,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" style="width:12px; height:12px; opacity:0.75; filter:invert(23%) sepia(64%) saturate(1878%) hue-rotate(335deg) brightness(90%) contrast(90%);"></button>
         </div>`;
@@ -25310,6 +25363,106 @@ function selectShoppingPickedProduct(name, isCustom) {
     askToAddToShoppingList(name, "", "", () => openShoppingList());
 }
 
+// ── Rezeptkosten ────────────────────────────────────────────────────────────
+// Preis einer einzelnen Rezept-Zutat (fuer die im Rezept angegebene Menge).
+// Drei Quellen, in dieser Reihenfolge:
+//  1. ing.priceMode === "ignore"  -> zaehlt als 0 ("vernachlaessigbar", z.B.
+//     Salz/Pfeffer) und gilt trotzdem als vollstaendig angegeben.
+//  2. ing.priceMode === "fixed"   -> der im Rezept hinterlegte Festpreis
+//     (siehe openRecipeIngredientPricePopup()).
+//  3. sonst automatisch aus der Speisekammer: juengster Posten desselben
+//     Produkts mit hinterlegtem Preis, anteilig auf die Rezeptmenge
+//     umgerechnet (500g fuer 2,00 € + 250 g im Rezept -> 1,00 €). Passt die
+//     Mengenart nicht zusammen (z.B. Stueck vs. g), greift der Festpreis als
+//     Rueckfall, sonst gilt die Zutat als "ohne Preis".
+// Rueckgabe: { cost: Zahl|null, source: "ignore"|"fixed"|"auto"|"missing" }
+function _recipeIngredientCost(ing) {
+    if (!ing) return { cost: null, source: "missing" };
+    if (ing.priceMode === "ignore") return { cost: 0, source: "ignore" };
+    let fixed = parseFloat(ing.price);
+    if (ing.priceMode === "fixed" && !isNaN(fixed)) return { cost: fixed, source: "fixed" };
+
+    let match = findCatalogMatch(ing.name);
+    let key = ((match ? match.name : ing.name) || "").trim().toLowerCase();
+    let candidates = pantry.filter(p => (p.name || "").trim().toLowerCase() === key && typeof p.preis === "number" && !isNaN(p.preis));
+    if (candidates.length) {
+        // Juengster Posten (zuletzt eingekauft) - sein Preis ist der aktuellste.
+        let src = candidates.reduce((a, b) => ((b.storedAt || 0) >= (a.storedAt || 0) ? b : a));
+        let recipeQty = parseFloat(ing.qty);
+        let srcQty = parseFloat(src.qty);
+        if (!isNaN(recipeQty) && recipeQty > 0 && !isNaN(srcQty) && srcQty > 0) {
+            let a = _stockUpdateToBase(recipeQty, (ing.unit || "").trim().toLowerCase());
+            let b = _stockUpdateToBase(srcQty, (src.qtyUnit || "").trim().toLowerCase());
+            if (a.type === b.type && b.base > 0) return { cost: src.preis * (a.base / b.base), source: "auto" };
+        } else if (isNaN(recipeQty) || !recipeQty) {
+            // Rezept nennt keine Menge -> ganze Packung ansetzen.
+            return { cost: src.preis, source: "auto" };
+        }
+    }
+    if (!isNaN(fixed)) return { cost: fixed, source: "fixed" };
+    return { cost: null, source: "missing" };
+}
+
+// Gesamt-/Portionspreis eines Rezepts. Zutaten ohne ermittelbaren Preis
+// werden NICHT geraten, sondern gesammelt zurueckgegeben (missing) - der
+// angezeigte Preis ist dann ausdruecklich nur eine Untergrenze.
+function recipeCostInfo(recipe) {
+    let total = 0;
+    let missing = [];
+    (recipe && recipe.ingredients ? recipe.ingredients : []).forEach(ing => {
+        let r = _recipeIngredientCost(ing);
+        if (r.cost === null) { if (!ing.optional) missing.push(ing.name); }
+        else total += r.cost;
+    });
+    let servings = Math.max(1, parseInt(recipe && recipe.servings) || 4);
+    return { total, perServing: total / servings, missing, servings };
+}
+
+function _formatEuro(n) {
+    return (Math.round(n * 100) / 100).toFixed(2).replace(".", ",") + "\u2009€";
+}
+
+// Kurzlabel fuer den Preis-Button einer Zutat (Rezept-Formular bzw.
+// Zutaten-Popup, siehe openRecipeIngredientPricePopup()).
+function _recipeIngPriceLabel(ing) {
+    let r = _recipeIngredientCost(ing);
+    if (r.source === "ignore") return "vernachlässigbar";
+    if (r.source === "missing") return "Preis fehlt";
+    return _formatEuro(r.cost) + (r.source === "auto" ? " (Speisekammer)" : "");
+}
+
+// Preis-Popup fuer eine Rezept-Zutat - dasselbe Popup wie in der
+// Speisekammer (siehe openPantryPricePopup()/_pantryPricePopupRenderHtml()),
+// nur mit recipeIngIdx statt uid im State und zwei zusaetzlichen Schaltern:
+// "aus Speisekammer" (kein Festpreis, automatisch rechnen) und
+// "vernachlässigbar" (zaehlt als 0).
+function openRecipeIngredientPricePopup(idx) {
+    let ing = (window.recipeIngredients || [])[idx];
+    if (!ing) return;
+    let fixed = parseFloat(ing.price);
+    window._pantryPricePopupState = {
+        recipeIngIdx: idx,
+        mode: ing.priceMode || "auto",
+        digits: (ing.priceMode === "fixed" && !isNaN(fixed)) ? String(Math.round(fixed * 100)) : "",
+        _original: (!isNaN(fixed)) ? String(fixed) : ""
+    };
+    _openPantryPricePopupCore();
+}
+
+function _recipePricePopupSetMode(mode) {
+    let s = window._pantryPricePopupState;
+    if (!s) return;
+    s.mode = mode;
+    if (mode !== "fixed") s.digits = "";
+    _pantryPricePopupRerender();
+}
+
+function _refreshRecipeIngPriceButton(idx) {
+    let ing = (window.recipeIngredients || [])[idx];
+    let btn = document.getElementById("editIngPriceBtn");
+    if (ing && btn) btn.textContent = _recipeIngPriceLabel(ing);
+}
+
 function editRecipeIngredientQty(idx) {
     let ing = window.recipeIngredients[idx];
     let color = getActionBarColor();
@@ -25321,6 +25474,11 @@ function editRecipeIngredientQty(idx) {
                 <input id="editIngQty" type="number" min="1" placeholder="qty" value="${ing.qty||""}" style="width:80px; border-radius:8px; border:1px solid #ccc; padding:6px 8px; font-size:14px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; text-align:center;">
                 ${unitSwiperHTML("editIngUnit", ing.unit || "", color, "", "compact")}
             </div>` : ""}
+            <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin:12px 0 2px 0;">
+                <span style="font-size:12px; opacity:0.6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">Preis</span>
+                <button type="button" id="editIngPriceBtn" onclick="openRecipeIngredientPricePopup(${idx})" style="min-width:150px; border:1.5px solid ${colorToRgba(color, 0.35)}; background:${colorToRgba(color, 0.08)}; color:${color}; border-radius:9px; padding:7px 12px; font-size:12px; font-weight:bold; font-family:inherit; cursor:pointer;">${_recipeIngPriceLabel(ing)}</button>
+            </div>
+            <div style="text-align:center; font-size:10px; opacity:0.5; margin-bottom:2px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">wird für den Portionspreis genutzt</div>
             <label style="display:flex; align-items:center; justify-content:center; gap:6px; margin:12px 0 4px 0; font-size:13px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; opacity:0.75; cursor:pointer;">
                 <input id="editIngOptional" type="checkbox" ${ing.optional ? "checked" : ""} style="width:16px; height:16px;">
                 optional
@@ -26642,6 +26800,27 @@ function openRecipeDetail(index) {
         }
     }
 
+    // Preis pro Portion (siehe recipeCostInfo()): rechnet die hinterlegten
+    // Zutatenpreise zusammen - automatisch aus der Speisekammer, sonst aus dem
+    // im Rezept hinterlegten Festpreis; als "vernachlässigbar" markierte
+    // Zutaten zaehlen als 0. Fehlt bei mind. einer (nicht optionalen) Zutat
+    // ein Preis, wird der Wert ausdruecklich als Untergrenze ("mind.")
+    // gekennzeichnet, statt eine falsche Genauigkeit vorzutaeuschen.
+    let costInfo = recipeCostInfo(r);
+    let costRowHtml = "";
+    if (costInfo.total > 0 || costInfo.missing.length) {
+        let perServingTxt = _formatEuro(costInfo.perServing);
+        let totalTxt = _formatEuro(costInfo.perServing * currentServings);
+        costRowHtml = `
+            <div style="margin:0 auto 12px; background:rgba(255,255,255,0.35); border-radius:14px; box-shadow:0 2px 9px rgba(0,0,0,0.07); padding:9px 14px; display:flex; align-items:center; gap:10px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+                <div style="flex:1; min-width:0;">
+                    <div style="font-size:14px; font-weight:bold; color:#222;">${costInfo.missing.length ? "mind. " : "ca. "}${perServingTxt}<span style="font-size:10.5px; font-weight:400; opacity:0.55;"> / Portion</span></div>
+                    <div style="font-size:10px; opacity:0.55; margin-top:2px;">${totalTxt} für ${currentServings} Portion${currentServings === 1 ? "" : "en"}${costInfo.missing.length ? ` · ${costInfo.missing.length} Zutat${costInfo.missing.length === 1 ? "" : "en"} ohne Preis` : ""}</div>
+                </div>
+                ${costInfo.missing.length ? `<button onclick="openEditRecipe(${index})" title="${_escapeHtml(costInfo.missing.join(", "))}" style="flex-shrink:0; background:${colorToRgba(color, 0.14)}; color:${color}; border:none; border-radius:9px; padding:7px 11px; font-size:10.5px; font-weight:bold; font-family:inherit; cursor:pointer;">Preise ergänzen</button>` : ""}
+            </div>`;
+    }
+
     document.getElementById("app").innerHTML = `
         <div class="fixed-top-bar" id="recipeDetailTopBar" style="--bar-accent:${color};">
             ${renderRecipeDetailTopBarInner(index)}
@@ -26671,6 +26850,7 @@ function openRecipeDetail(index) {
                 <button onclick="adjustRecipeServings(${index}, 1)" style="background:${color}; color:white; border:none; border-radius:10px; width:32px; height:32px; font-size:17px; font-weight:bold; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.15); line-height:1;">+</button>
             </div>` : ""}
             ${statusMsg}
+            ${costRowHtml}
             <div style="background:rgba(255,255,255,0.35); border-radius:16px; box-shadow:0 3px 12px rgba(0,0,0,0.09); overflow:hidden;">
                 <div style="background:${color}; padding:10px 16px; display:flex; align-items:center; gap:8px;">
                     <span style="font-size:13px; font-weight:bold; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color:white; opacity:0.9; letter-spacing:0.06em; text-transform:uppercase;">Ingredients</span>
@@ -27600,30 +27780,15 @@ function _cookMiniTileEditable3(rowId, idx, item) {
     let excluded = !!(window.cookTileExcluded[rowId] && window.cookTileExcluded[rowId][idx]);
     let fieldStyle = _cookFieldStyle();
 
-    // Nutzer hat dieses Tile bewusst ausgeschlossen (durch Antippen im
-    // "unveraendert"-Zustand, siehe _cookTileCardClick) - bedeutet
-    // vollstaendiger Verbrauch (0 uebrig, siehe dort), wird beim Bestaetigen
-    // also komplett aus der Speisekammer entfernt. Feste, nicht editierbare
-    // "0"/"–"-Anzeige statt Eingabefeldern macht das ohne Erklaertext klar.
-    // Erneutes Antippen der Kachel macht die Auswahl rueckgaengig.
-    if (excluded) {
-        return `
-        <div onclick="_cookTileCardClick('${rowId}', ${idx})" style="width:300px; max-width:100%; border-radius:20px; padding:14px; box-sizing:border-box; border:3px dashed #ccc; color:#999; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; cursor:pointer;">
-            <div style="display:flex; align-items:stretch; gap:12px;">
-                <div style="flex-shrink:0; width:60px; display:flex; flex-direction:column; gap:8px;">
-                    <div style="width:60px; height:60px; border-radius:50%; border:2px dashed #ccc; box-sizing:border-box;"></div>
-                    <div style="text-align:center; border:1px dashed #ccc; border-radius:8px; padding:5px 4px; font-size:10px;">–</div>
-                </div>
-                <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:8px;">
-                    <div style="border:1px dashed #ccc; border-radius:8px; padding:6px 8px; font-size:14px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${item.name}</div>
-                    <div style="flex:1; display:flex; align-items:center; gap:8px;">
-                        <div style="flex:1; min-width:0; height:38px; display:flex; align-items:center; justify-content:center; font-size:14px; border:1px dashed #ccc; border-radius:8px;">0</div>
-                        <div style="flex-shrink:0; height:38px; padding:0 14px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold; white-space:nowrap; border:1px dashed #ccc; border-radius:8px;">–</div>
-                    </div>
-                </div>
-            </div>
-        </div>`;
-    }
+    // Ausgeschlossen ("aufgebraucht", siehe _cookTileCardClick): frueher gab es
+    // dafuer eine eigene, deutlich kleinere Platzhalter-Kachel - dadurch sprang
+    // die Kachelgroesse beim Antippen sichtbar um. Jetzt bleibt exakt dieselbe
+    // Kachel stehen (gleiche Groesse, gleicher Aufbau), nur gedimmt und
+    // gestrichelt umrandet; ihre Bedienelemente sind dabei deaktiviert (siehe
+    // innerLockStyle unten), sodass ein Tap ueberall die Markierung wieder
+    // aufhebt.
+    let excludedStyle = excluded ? " opacity:0.5; outline:3px dashed rgba(255,255,255,0.85); outline-offset:-3px;" : "";
+    let innerLockStyle = excluded ? " pointer-events:none;" : "";
 
     // "kein MHD nötig" für dieses Tile (siehe _cookToggleTileNoExpiry) - rein
     // visueller/Eingabe-Zustand hier in der Review, angewendet erst beim
@@ -27726,22 +27891,27 @@ function _cookMiniTileEditable3(rowId, idx, item) {
     // etwas knapperes Padding bleiben trotzdem als Reserve bestehen, damit
     // das komplette Datum auch bei etwas grosszuegigeren Geraete-Einstellungen
     // (z.B. groessere System-Schriftgroesse) hineinpasst.
-    let mhdPillDisplay = noExpiry ? "∞" : (mhdPillValue || "TT|MM|JJ");
-    let mhdFieldHtml = `<button type="button" onclick="event.stopPropagation(); openCookMhdPopup('${rowId}', ${idx})" style="width:100%; box-sizing:border-box; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:8.5px; letter-spacing:-0.4px; ${fieldStyle} height:30px; margin:0; padding:0 2px; opacity:${noExpiry ? "0.5" : "1"}; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; touch-action:manipulation; -webkit-appearance:none; appearance:none;">${mhdPillDisplay}</button>`;
-    // ∞-Umschalter direkt unter dem MHD-Feld, exakt gleiche Breite (100% der
-    // 60px-Spalte) wie das Feld darüber - siehe _cookToggleTileNoExpiry. Feste
-    // Höhe (26px, wie die Lagerort-Icon-Kreise, siehe
-    // _cookOpenStateStorageRowHtml) statt flex-Trick, damit sich beide Zeilen
-    // zuverlässig auf gleicher Höhe gegenüberstehen.
-    // Gleiche Höhe wie das MHD-Feld darüber (30px statt bisher 26px) - beide
-    // Buttons der linken Spalte sollen als zusammengehöriges Paar gleich groß
-    // wirken, analog zur Referenzkachel. Nutzt jetzt außerdem denselben
-    // Hintergrund/Rand wie das MHD-Feld darüber (${fieldStyle} statt eigenem
-    // rgba(255,255,255,0.3) ohne Rand) - beide Buttons sollen optisch als
-    // zusammengehöriges Paar wirken statt unterschiedlich stark getönt zu
-    // sein. Der aktive ("kein MHD nötig") Zustand bleibt weiterhin klar
-    // erkennbar durch den zusätzlichen weißen Innen-Rahmen (box-shadow).
-    let infBtn = `<button type="button" onclick="event.stopPropagation(); _cookToggleTileNoExpiry('${rowId}', ${idx})" title="kein MHD nötig" style="width:100%; height:30px; flex-shrink:0; box-sizing:border-box; margin:0; ${fieldStyle} border-radius:8px; font-size:11px; font-weight:bold; cursor:pointer; padding:0; touch-action:manipulation; opacity:${noExpiry ? "1" : "0.55"}; box-shadow:${noExpiry ? "0 0 0 2px rgba(255,255,255,0.9) inset" : "none"};">∞</button>`;
+    // Datum + ∞ sitzen jetzt gemeinsam in EINER vollbreiten Zeile ueber dem
+    // Zustands-/Lagerort-Bereich (frueher: schmale 60px-Spalte links neben
+    // ihm, Datum oben, ∞ darunter). Aufbau der Pille exakt wie im Bearbeiten-
+    // Modus der Speisekammer bzw. in der Bestands-Review (siehe mhdEditHtml in
+    // renderPantry() / mhdFooter in _stockUpdateExistingTile()): +/--Tage-
+    // Buttons flankieren eine kombinierte Pille mit dem Datum gross und den
+    // verbleibenden Tagen klein darunter (Tap auf die Unterzeile tauscht
+    // beides, Tap auf die Pille oeffnet das volle MHD-Popup).
+    let mhdCombo = _cookMhdComboText3(rowId, idx, mhdPillValue, noExpiry);
+    let mhdStepStyle = `flex:0 0 28px; width:28px; height:34px; border:2px solid rgba(255,255,255,0.85); border-radius:10px; background:${mixColorWithBlack(catColor, 0.3)}; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.2); box-sizing:border-box; display:flex; align-items:center; justify-content:center; padding:0; touch-action:manipulation; ${noExpiry ? "visibility:hidden;" : ""}`;
+    let mhdRowHtml = `
+        <div onclick="event.stopPropagation();" style="display:flex; align-items:center; gap:6px; width:100%; box-sizing:border-box;">
+            <button type="button" onclick="_cookAdjustTileMhd3('${rowId}', ${idx}, -1, '${mhdPillValue}')" style="${mhdStepStyle}"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPUAAABVCAYAAACRraKLAAABfGlDQ1BJQ0MgUHJvZmlsZQAAeJx1kc8rw2Ecx182TDNRFAeHJZw22dTi4rDFKBy2KcNl+9oPtR/fvt9Jy1W5rihx8evAX8BVOStFpOQsR+LC+vp8TU2yz9Pn+bye9/N8Pj3P5wFLJKNk9fpByOYKWijod85F5522ZxrpoBM7npiiq9Ph8Qg17f2WOjNeu81atc/9a81LCV2BuibhUUXVCsITwlOrBdXkLeEOJR1bEj4RdmlyQeEbU49X+MnkVIU/TdYioQBY2oSdqV8c/8VKWssKy8vpzWZWlJ/7mC9xJHKzYYk94t3ohAjix8kkYwTw4WFEZh9uvAzIihr5g9/5M+QlV5FZpYjGMinSFHCJuiLVExKToidkZCia/f/bVz055K1Ud/ih4dEwXvvAtgnlkmF8HBhG+RCsD3Ceq+bn92H4TfRSVevdg9Z1OL2oavFtONuArns1psW+Jau4JZmEl2NoiUL7FdgXKj372efoDiJr8lWXsLML/XK+dfELiotn9kWitK8AAANMSURBVHja7dxLa1wFHIbx5z0t1gvGRQqaQGso6E5JN/0KAbXpTrEb3StZ1G78CKk3KHZvF61LL61Fv0I3Ad0pikkhsWI2gaIFk7+LOaExSdNOtO2cw/OD2QxzgXd4OIdh5oR9qqop4CRwHJgEJtrb40gaxl/ASntbBhaAK0l+3c+LZciQnwPeAU4BL/lZSA/UD8BXwIUkv/2vUVfVM8BZ4AzwpFtLD9Ut4BPggyRr/znqqjoNnAfG3VZ6pFaBuSSX93pQs0fMB6rqHHDJoKWRMA5cqqr5qjow1JG6qsaAz4FX3FEaSdeAN3c7Hc8uQR8ErgIz7iaNtO+AV5Os3+v0e96gpU6YaXu9+5G6qt4CPnMrqVPeTnJxR9RVdRj4BXjajaROWQOOJVndfvr9vkFLnTTW9nvnSF1VR4GfgMfcR+qk28CLSZY2j9TvGbTUaYfajklVBVgEjriL1GlLwFSqaprBv0Ikdd90A8y6g9Qbsw1wwh2k3jjRMLiwgaR+mGgYXLVEUj9MpqrW2eMvmJI6ZaMxaKlXGoOW+la1E0hGLcmoJRm1JKOWZNSSUUsyaklGLcmoJRm1ZNSSjFqSUUsyaklGLRm1JKOWZNSSjFqSUUtGLcmoJRm1JKOWZNSSUUsyaklGLcmoJRm1ZNSSjFqSUUsyaklGLRm1JKOWZNSSjFqSUUtGLcmoJY1C1BvOIPXGRgP87g5Sb9xsgGV3kHpjuQFW3EHqjZUGuO4OUm9cT1VNAwtuIfXCdKoqwCJwxD2kTlsCppokBXzhHlLnfZmkAlBVR4EfgUPuInXSbeCFJDcagCRLwAV3kTrr0yQ3ALJ5T1UdBn4GxtxH6pQ14FiSVdjy2+8kfwBz7iN1ztxm0P+Kug37IvCxG0md8VHb7Z2Otz+iqg4CV4EZ95JG2rfAa0nWt96546+XSf4GXgeuuZk0sr4B3tge9K5Rt2GvAbPAObeTRs48cKrtdGe/93p2VZ0GzgPjbik9UqsMvhS7vNeDcj+vVFVjwFngDPCU20oP1S0GX2B/eLej89BRb4n7WeDd9tT8ZbeWHqjvga8Z/LDk5v0+Kft9t6p6HjgJHAcmgYn29oSfhTSUPxlc12CFwUVLFoArSRb382L/ALpfsparNmysAAAAAElFTkSuQmCC" style="width:13px; height:6px; object-fit:contain; filter:brightness(0) invert(1);"></button>
+            <button type="button" onclick="openCookMhdPopup('${rowId}', ${idx})" style="flex:1 1 auto; min-width:0; margin:0; box-sizing:border-box; display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.15; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:0 2px; height:34px; ${fieldStyle} border-radius:9px; opacity:${noExpiry ? "0.5" : "1"}; cursor:pointer; touch-action:manipulation;">
+                <span style="font-size:11px;">${mhdCombo.bigText}</span>
+                ${mhdCombo.smallText ? `<span onclick="event.stopPropagation(); _cookToggleMhdPrimary3('${rowId}', ${idx})" style="font-size:8.5px; opacity:0.65; margin-top:1px;">${mhdCombo.smallText}</span>` : ""}
+            </button>
+            <button type="button" onclick="_cookAdjustTileMhd3('${rowId}', ${idx}, 1, '${mhdPillValue}')" style="${mhdStepStyle}"><img src="data:image/png;base64,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" style="width:13px; height:13px; object-fit:contain; filter:brightness(0) invert(1);"></button>
+            <button type="button" onclick="event.stopPropagation(); _cookToggleTileNoExpiry('${rowId}', ${idx})" title="kein MHD nötig" style="flex:0 0 34px; width:34px; height:34px; box-sizing:border-box; margin:0; ${fieldStyle} border-radius:9px; font-size:12px; font-weight:bold; cursor:pointer; padding:0; touch-action:manipulation; opacity:${noExpiry ? "1" : "0.55"}; box-shadow:${noExpiry ? "0 0 0 2px rgba(255,255,255,0.9) inset" : "none"};">∞</button>
+        </div>`;
+
     // Fast transparenter Trennstrich zwischen dem oberen Block (Bild/Name/
     // Menge) und dem unteren Block (MHD/Zustand/Lagerort) - rein optische
     // Gliederung, siehe Wunsch nach strukturierterem Kachel-Aufbau.
@@ -27805,9 +27975,10 @@ function _cookMiniTileEditable3(rowId, idx, item) {
     let cookLowerBoxStyle = "background:rgba(255,255,255,0.09); border:1px solid rgba(255,255,255,0.14); border-radius:14px; padding:8px 10px; box-sizing:border-box;";
 
     return `
-    <div id="cookAfterTile3_${rowId}_${idx}" onclick="_cookTileCardClick('${rowId}', ${idx})" style="position:relative; width:300px; max-width:100%; background:${catColor}; border-radius:20px; padding:14px; box-shadow:0 4px 8px rgba(0,0,0,0.15); color:white; box-sizing:border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; cursor:pointer; touch-action:manipulation; outline:3px solid ${colorToRgba(catColor, 0.45)}; outline-offset:2px; ${unchanged ? "opacity:0.55;" : ""} transition:opacity .15s ease;">
-        ${unchanged ? `<div title="unverändert – antippen zum Ausschließen" style="position:absolute; top:8px; left:8px; width:20px; height:20px; border-radius:50%; background:rgba(0,0,0,0.55); border:1.5px solid white; display:flex; align-items:center; justify-content:center; box-sizing:border-box;"><img src="data:image/png;base64,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" style="width:10px; height:10px; filter:brightness(0) invert(1); object-fit:contain;"></div>` : ""}
-        <div style="display:flex; align-items:flex-start; gap:12px;">
+    <div id="cookAfterTile3_${rowId}_${idx}" onclick="_cookTileCardClick('${rowId}', ${idx})" style="position:relative; width:300px; max-width:100%; background:${catColor}; border-radius:20px; padding:14px; box-shadow:0 4px 8px rgba(0,0,0,0.15); color:white; box-sizing:border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; cursor:pointer; touch-action:manipulation; outline:3px solid ${colorToRgba(catColor, 0.45)}; outline-offset:2px; ${(unchanged && !excluded) ? "opacity:0.55;" : ""}${excludedStyle} transition:opacity .15s ease;">
+        ${(unchanged && !excluded) ? `<div title="unverändert – antippen zum Ausschließen" style="position:absolute; top:8px; left:8px; width:20px; height:20px; border-radius:50%; background:rgba(0,0,0,0.55); border:1.5px solid white; display:flex; align-items:center; justify-content:center; box-sizing:border-box;"><img src="data:image/png;base64,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" style="width:10px; height:10px; filter:brightness(0) invert(1); object-fit:contain;"></div>` : ""}
+        ${excluded ? `<div style="position:absolute; top:8px; right:12px; font-size:9.5px; font-weight:bold; letter-spacing:0.05em; text-transform:uppercase; opacity:0.85;">aufgebraucht</div>` : ""}
+        <div style="display:flex; align-items:flex-start; gap:12px;${innerLockStyle}">
             <div style="flex-shrink:0; width:60px; height:60px;">${_cookTileImgWithRing3(item, ringColor, strokeDashoffset)}</div>
             <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:6px;">
                 <div style="width:100%; height:20px; box-sizing:border-box; display:flex; align-items:center; font-size:14px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${item.name}</div>
@@ -27820,12 +27991,9 @@ function _cookMiniTileEditable3(rowId, idx, item) {
             </div>
         </div>
         ${dividerHtml}
-        <div onclick="event.stopPropagation();" style="display:flex; align-items:flex-start; gap:12px; margin-top:6px;">
-            <div style="flex-shrink:0; width:60px; display:flex; flex-direction:column; gap:6px; ${cookLowerBoxStyle}">
-                <div style="height:30px; display:flex;">${mhdFieldHtml}</div>
-                <div style="height:30px; display:flex;">${infBtn}</div>
-            </div>
-            <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; ${(current > 0) ? cookLowerBoxStyle : ""}">
+        <div style="display:flex; flex-direction:column; gap:8px;${innerLockStyle}">
+            ${mhdRowHtml}
+            <div onclick="event.stopPropagation();" style="display:flex; flex-direction:column; gap:6px; ${(current > 0) ? cookLowerBoxStyle : ""}">
                 <div style="height:30px; display:flex;">${(current > 0) ? _cookOpenStateButtonHtml(rowId, idx, item) : ""}</div>
                 <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
                     ${(current > 0) ? _cookOpenSplitSliderHtml3(rowId, idx, item, (window.cookTileOpenState[rowId] || {})[idx]) : ""}
@@ -27836,22 +28004,6 @@ function _cookMiniTileEditable3(rowId, idx, item) {
     </div>`;
 }
 
-// Relevant, solange von diesem Tile noch etwas > 0 im Bestand bleibt (siehe
-// Aufrufstelle in _cookMiniTileEditable: current > 0) UND das Produkt
-// überhaupt eine "geöffnet"- und/oder "angeschnitten"-Achse kennt (siehe
-// productHasOpenedOption/cutOption) UND es nicht ohnehin schon vollständig
-// angeschnitten ist (dann ist der letztmögliche Zustand bereits erreicht,
-// siehe unten). Bewusst UNABHÄNGIG davon, ob für dieses Rezept überhaupt
-// eine Menge abgezogen wurde ("unchanged" spielt hier keine Rolle mehr) -
-// der Zustand eines Speisekammer-Postens soll sich generell markieren
-// lassen, nicht nur im Moment eines tatsächlichen Teilverbrauchs. Beispiel:
-// ein bislang ungeöffneter Joghurt wird für ein Rezept angebrochen, die
-// übrige Hälfte bleibt im Bestand - und sollte ab jetzt mit der (meist
-// kürzeren) "geöffnet"-Haltbarkeit statt der vollen ungeöffneten
-// Haltbarkeit weiterlaufen. Genauso soll sich aber auch ein komplett
-// unangetastet bleibendes Tile (z.B. weil es nur "nebenbei" mitgeöffnet
-// wurde, ohne fürs Rezept gebraucht zu werden) hier als geöffnet/
-// angeschnitten markieren lassen.
 function _cookOpenApplicable(item) {
     // Bereits angeschnitten = letztmoeglicher Zustand (geschlossen -> geoeffnet
     // -> angeschnitten) erreicht - keine weitere Zustandsaenderung mehr moeglich.
@@ -28484,6 +28636,21 @@ function _cookTilePairHtml(rowId, idx, item, unknownQty) {
     // sich nachträglich eine Menge eintragen und direkt als verbraucht
     // verbuchen lässt (siehe _confirmCookRecipe).
     if (unknownQty) {
+        // "Bestand anpassen" (V3): Vorher-Kachel in derselben Optik wie bei
+        // Posten MIT Menge (_cookMiniTileStatic3 - reine Anzeige, keine
+        // Kaesten, die wie Eingabefelder aussehen), Nachher-Kachel im
+        // identischen Aufbau (_cookUnknownQtyTileEditable3).
+        if (window.cookReviewV3Mode) {
+            return `
+            <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+                ${_cookMiniTileStatic3(item)}
+                <div style="display:flex; align-items:center; gap:8px; padding:4px 0;">
+                    ${_cookChevronDown("#999")}
+                    <div style="font-size:9px; opacity:0.4;">Menge unbekannt</div>
+                </div>
+                ${_cookUnknownQtyTileEditable3(rowId, idx, item)}
+            </div>`;
+        }
         return `
         <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
             ${_cookMiniTileStatic(item)}
@@ -28893,6 +29060,51 @@ function _cookStepQtyV2(rowId, idx, delta) {
 // den Wert im MHD-Datumsfeld um ganze Tage, analog zu adjustPantryMhdInline()
 // in der echten Speisekammer, schreibt das Ergebnis aber (wie das Feld selbst)
 // nur in den Draft (_cookSetTileMhd) statt sofort in pantry[].
+// Kombinierte Datum/Tage-Beschriftung der MHD-Pille in "Bestand anpassen"
+// (siehe mhdRowHtml in _cookMiniTileEditable3) - Pendant zu
+// _pantryMhdComboText(), nur auf Basis des im Tile gerade gueltigen
+// Pill-Werts (manueller Override oder berechneter Default) statt eines
+// echten pantry[]-Items. Welche der beiden gleichwertigen Darstellungen
+// gross steht, merkt sich window.cookTileMhdPrimary pro Tile.
+function _cookMhdComboText3(rowId, idx, pillValue, noExpiry) {
+    if (noExpiry) return { bigText: "∞", smallText: "" };
+    let dateText = pillValue || "TT|MM|JJ";
+    let d = pillValue ? parseDatePillValue(pillValue) : null;
+    let daysText = "–";
+    if (d) {
+        let days = Math.round((d.getTime() - Date.now()) / 86400000);
+        daysText = days === 0 ? "heute" : (days < 0
+            ? Math.abs(days) + (Math.abs(days) === 1 ? " Tag über" : " Tage über")
+            : days + (days === 1 ? " Tag" : " Tage"));
+    }
+    let primary = ((window.cookTileMhdPrimary || {})[rowId] || {})[idx] === "days" ? "days" : "date";
+    return {
+        bigText: primary === "days" ? daysText : dateText,
+        smallText: primary === "days" ? dateText : daysText
+    };
+}
+
+function _cookToggleMhdPrimary3(rowId, idx) {
+    if (!window.cookTileMhdPrimary) window.cookTileMhdPrimary = {};
+    if (!window.cookTileMhdPrimary[rowId]) window.cookTileMhdPrimary[rowId] = {};
+    let cur = window.cookTileMhdPrimary[rowId][idx];
+    window.cookTileMhdPrimary[rowId][idx] = cur === "days" ? "date" : "days";
+    _cookRenderTileList(rowId);
+}
+
+// +/--Tage-Buttons neben der Pille (siehe mhdRowHtml in
+// _cookMiniTileEditable3). Anders als _cookAdjustTileMhd() weiter unten
+// braucht es hier kein <input> im DOM - der aktuell angezeigte Pill-Wert wird
+// direkt mitgegeben, verschoben und als Override gespeichert; das Rerender
+// aktualisiert danach Pille, Restlaufzeit und Kachelfarbe.
+function _cookAdjustTileMhd3(rowId, idx, deltaDays, baseVal) {
+    if ((window.cookTileNoExpiry[rowId] || {})[idx]) return;
+    let base = parseDatePillValue(baseVal) || new Date();
+    let next = new Date(base.getTime() + deltaDays * 86400000);
+    _cookSetTileMhd(rowId, idx, formatDateToPillValue(next));
+    _cookRenderTileList(rowId);
+}
+
 function _cookAdjustTileMhd(rowId, idx, deltaDays) {
     if ((window.cookTileNoExpiry[rowId] || {})[idx]) return;
     let input = document.getElementById(`cookMhd_${rowId}_${idx}`);
@@ -28921,6 +29133,107 @@ function _cookAdjustTileMhd(rowId, idx, deltaDays) {
 // angeschnitten-Zustands-Chip (_cookOpenStateButtonHtml) ist hier nutzbar -
 // fehlende Mengenangabe heisst nicht, dass sich der Zustand des Rests nicht
 // trotzdem aendern kann.
+// "Bestand anpassen" (V3): Kachel fuer einen Posten OHNE hinterlegte Menge.
+// Frueher hatte dieser Fall ein voellig eigenes, schmaleres Layout (280px,
+// Name in einem Eingabefeld-Kasten, Kategoriefarbe statt Ampelfarbe, MHD als
+// rohes Textfeld) und fiel dadurch sichtbar aus der Reihe. Jetzt exakt
+// derselbe Aufbau wie die normale "Nachher"-Kachel (_cookMiniTileEditable3):
+// gleiche Breite, gleiche Ampelfarbe/Ring, Name als reine Ueberschrift, Menge
+// mit Steppern + Einheiten-Swiper (nur eben leer statt vorbelegt, da es hier
+// keinen Ausgangswert gibt), darunter die Datums-/∞-Zeile und der Zustands-/
+// Lagerort-Bereich. IDs und Handler bleiben die bisherigen
+// (cookUnknownQty_/cookUnknownUnit_/cookUnknownTile_), damit Live-Eingabe und
+// Uebernahme (_confirmCookRecipe) unveraendert weiterlaufen.
+function _cookUnknownQtyTileEditable3(rowId, idx, item) {
+    let fieldStyle = _cookFieldStyle();
+    let excluded = !!(window.cookUnknownExcluded[rowId] && window.cookUnknownExcluded[rowId][idx]);
+    let excludedStyle = excluded ? " opacity:0.5; outline:3px dashed rgba(255,255,255,0.85); outline-offset:-3px;" : "";
+    let innerLockStyle = excluded ? " pointer-events:none;" : "";
+
+    let noExpiry = !!((window.cookTileNoExpiry[rowId] || {})[idx]);
+    let mhdOverride = (window.cookTileMhd[rowId] || {})[idx] || "";
+    let previewItem = _cookPreviewItemForOpenState(rowId, idx, item);
+    let remainingIgnoringNoExpiry = getRemainingTime(Object.assign({}, previewItem, { noExpiry: false }));
+    let mhdDefaultVal = (remainingIgnoringNoExpiry !== Infinity) ? formatDateToPillValue(new Date(Date.now() + remainingIgnoringNoExpiry)) : "";
+    let mhdPillValue = mhdOverride || mhdDefaultVal;
+
+    let effectiveRemaining;
+    if (noExpiry) {
+        effectiveRemaining = Infinity;
+    } else if (mhdOverride) {
+        let mhdDate = parseDatePillValue(mhdOverride);
+        effectiveRemaining = mhdDate ? (mhdDate.getTime() - Date.now()) : getRemainingTime(previewItem);
+    } else {
+        effectiveRemaining = getRemainingTime(previewItem);
+    }
+    let catColor = getColor(effectiveRemaining);
+    let ringColor = getRingColor(effectiveRemaining);
+    let maxDays = 7;
+    let ratio = Math.max(0, Math.min(1, effectiveRemaining / (maxDays * 86400000)));
+    let strokeDashoffset = 439.82 * (1 - ratio);
+
+    let displayUnit = item.qtyUnit || "";
+    let qtyStep = _openQtyStep(displayUnit);
+    let qtyStepBtnColor = mixColorWithBlack(catColor, 0.3);
+    let qtyMinusBtn = `<button type="button" onclick="_cookStepUnknownQty('${rowId}', ${idx}, ${-qtyStep})" style="position:relative; flex:0 0 26px; width:26px; height:26px; border:1.5px solid rgba(255,255,255,0.85); border-radius:8px; background:${qtyStepBtnColor}; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.2); box-sizing:border-box; padding:0; touch-action:manipulation;"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPUAAABVCAYAAACRraKLAAABfGlDQ1BJQ0MgUHJvZmlsZQAAeJx1kc8rw2Ecx182TDNRFAeHJZw22dTi4rDFKBy2KcNl+9oPtR/fvt9Jy1W5rihx8evAX8BVOStFpOQsR+LC+vp8TU2yz9Pn+bye9/N8Pj3P5wFLJKNk9fpByOYKWijod85F5522ZxrpoBM7npiiq9Ph8Qg17f2WOjNeu81atc/9a81LCV2BuibhUUXVCsITwlOrBdXkLeEOJR1bEj4RdmlyQeEbU49X+MnkVIU/TdYioQBY2oSdqV8c/8VKWssKy8vpzWZWlJ/7mC9xJHKzYYk94t3ohAjix8kkYwTw4WFEZh9uvAzIihr5g9/5M+QlV5FZpYjGMinSFHCJuiLVExKToidkZCia/f/bVz055K1Ud/ih4dEwXvvAtgnlkmF8HBhG+RCsD3Ceq+bn92H4TfRSVevdg9Z1OL2oavFtONuArns1psW+Jau4JZmEl2NoiUL7FdgXKj372efoDiJr8lWXsLML/XK+dfELiotn9kWitK8AAANMSURBVHja7dxLa1wFHIbx5z0t1gvGRQqaQGso6E5JN/0KAbXpTrEb3StZ1G78CKk3KHZvF61LL61Fv0I3Ad0pikkhsWI2gaIFk7+LOaExSdNOtO2cw/OD2QxzgXd4OIdh5oR9qqop4CRwHJgEJtrb40gaxl/ASntbBhaAK0l+3c+LZciQnwPeAU4BL/lZSA/UD8BXwIUkv/2vUVfVM8BZ4AzwpFtLD9Ut4BPggyRr/znqqjoNnAfG3VZ6pFaBuSSX93pQs0fMB6rqHHDJoKWRMA5cqqr5qjow1JG6qsaAz4FX3FEaSdeAN3c7Hc8uQR8ErgIz7iaNtO+AV5Os3+v0e96gpU6YaXu9+5G6qt4CPnMrqVPeTnJxR9RVdRj4BXjajaROWQOOJVndfvr9vkFLnTTW9nvnSF1VR4GfgMfcR+qk28CLSZY2j9TvGbTUaYfajklVBVgEjriL1GlLwFSqaprBv0Ikdd90A8y6g9Qbsw1wwh2k3jjRMLiwgaR+mGgYXLVEUj9MpqrW2eMvmJI6ZaMxaKlXGoOW+la1E0hGLcmoJRm1JKOWZNSSUUsyaklGLcmoJRm1ZNSSjFqSUUsyaklGLRm1JKOWZNSSjFqSUUtGLcmoJRm1JKOWZNSSUUsyaklGLcmoJRm1ZNSSjFqSUUsyaklGLRm1JKOWZNSSjFqSUUtGLcmoJY1C1BvOIPXGRgP87g5Sb9xsgGV3kHpjuQFW3EHqjZUGuO4OUm9cT1VNAwtuIfXCdKoqwCJwxD2kTlsCppokBXzhHlLnfZmkAlBVR4EfgUPuInXSbeCFJDcagCRLwAV3kTrr0yQ3ALJ5T1UdBn4GxtxH6pQ14FiSVdjy2+8kfwBz7iN1ztxm0P+Kug37IvCxG0md8VHb7Z2Otz+iqg4CV4EZ95JG2rfAa0nWt96546+XSf4GXgeuuZk0sr4B3tge9K5Rt2GvAbPAObeTRs48cKrtdGe/93p2VZ0GzgPjbik9UqsMvhS7vNeDcj+vVFVjwFngDPCU20oP1S0GX2B/eLej89BRb4n7WeDd9tT8ZbeWHqjvga8Z/LDk5v0+Kft9t6p6HjgJHAcmgYn29oSfhTSUPxlc12CFwUVLFoArSRb382L/ALpfsparNmysAAAAAElFTkSuQmCC" style="position:absolute; inset:0; margin:auto; width:12px; height:5px; object-fit:contain; filter:brightness(0) invert(1);"></button>`;
+    let qtyPlusBtn = `<button type="button" onclick="_cookStepUnknownQty('${rowId}', ${idx}, ${qtyStep})" style="position:relative; flex:0 0 26px; width:26px; height:26px; border:1.5px solid rgba(255,255,255,0.85); border-radius:8px; background:${qtyStepBtnColor}; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.2); box-sizing:border-box; padding:0; touch-action:manipulation;"><img src="data:image/png;base64,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" style="position:absolute; inset:0; margin:auto; width:12px; height:12px; object-fit:contain; filter:brightness(0) invert(1);"></button>`;
+
+    let mhdCombo = _cookMhdComboText3(rowId, idx, mhdPillValue, noExpiry);
+    let mhdStepStyle = `flex:0 0 28px; width:28px; height:34px; border:2px solid rgba(255,255,255,0.85); border-radius:10px; background:${qtyStepBtnColor}; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.2); box-sizing:border-box; display:flex; align-items:center; justify-content:center; padding:0; touch-action:manipulation; ${noExpiry ? "visibility:hidden;" : ""}`;
+    let mhdRowHtml = `
+        <div onclick="event.stopPropagation();" style="display:flex; align-items:center; gap:6px; width:100%; box-sizing:border-box;">
+            <button type="button" onclick="_cookAdjustTileMhd3('${rowId}', ${idx}, -1, '${mhdPillValue}')" style="${mhdStepStyle}"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPUAAABVCAYAAACRraKLAAABfGlDQ1BJQ0MgUHJvZmlsZQAAeJx1kc8rw2Ecx182TDNRFAeHJZw22dTi4rDFKBy2KcNl+9oPtR/fvt9Jy1W5rihx8evAX8BVOStFpOQsR+LC+vp8TU2yz9Pn+bye9/N8Pj3P5wFLJKNk9fpByOYKWijod85F5522ZxrpoBM7npiiq9Ph8Qg17f2WOjNeu81atc/9a81LCV2BuibhUUXVCsITwlOrBdXkLeEOJR1bEj4RdmlyQeEbU49X+MnkVIU/TdYioQBY2oSdqV8c/8VKWssKy8vpzWZWlJ/7mC9xJHKzYYk94t3ohAjix8kkYwTw4WFEZh9uvAzIihr5g9/5M+QlV5FZpYjGMinSFHCJuiLVExKToidkZCia/f/bVz055K1Ud/ih4dEwXvvAtgnlkmF8HBhG+RCsD3Ceq+bn92H4TfRSVevdg9Z1OL2oavFtONuArns1psW+Jau4JZmEl2NoiUL7FdgXKj372efoDiJr8lWXsLML/XK+dfELiotn9kWitK8AAANMSURBVHja7dxLa1wFHIbx5z0t1gvGRQqaQGso6E5JN/0KAbXpTrEb3StZ1G78CKk3KHZvF61LL61Fv0I3Ad0pikkhsWI2gaIFk7+LOaExSdNOtO2cw/OD2QxzgXd4OIdh5oR9qqop4CRwHJgEJtrb40gaxl/ASntbBhaAK0l+3c+LZciQnwPeAU4BL/lZSA/UD8BXwIUkv/2vUVfVM8BZ4AzwpFtLD9Ut4BPggyRr/znqqjoNnAfG3VZ6pFaBuSSX93pQs0fMB6rqHHDJoKWRMA5cqqr5qjow1JG6qsaAz4FX3FEaSdeAN3c7Hc8uQR8ErgIz7iaNtO+AV5Os3+v0e96gpU6YaXu9+5G6qt4CPnMrqVPeTnJxR9RVdRj4BXjajaROWQOOJVndfvr9vkFLnTTW9nvnSF1VR4GfgMfcR+qk28CLSZY2j9TvGbTUaYfajklVBVgEjriL1GlLwFSqaprBv0Ikdd90A8y6g9Qbsw1wwh2k3jjRMLiwgaR+mGgYXLVEUj9MpqrW2eMvmJI6ZaMxaKlXGoOW+la1E0hGLcmoJRm1JKOWZNSSUUsyaklGLcmoJRm1ZNSSjFqSUUsyaklGLRm1JKOWZNSSjFqSUUtGLcmoJRm1JKOWZNSSUUsyaklGLcmoJRm1ZNSSjFqSUUsyaklGLRm1JKOWZNSSjFqSUUtGLcmoJY1C1BvOIPXGRgP87g5Sb9xsgGV3kHpjuQFW3EHqjZUGuO4OUm9cT1VNAwtuIfXCdKoqwCJwxD2kTlsCppokBXzhHlLnfZmkAlBVR4EfgUPuInXSbeCFJDcagCRLwAV3kTrr0yQ3ALJ5T1UdBn4GxtxH6pQ14FiSVdjy2+8kfwBz7iN1ztxm0P+Kug37IvCxG0md8VHb7Z2Otz+iqg4CV4EZ95JG2rfAa0nWt96546+XSf4GXgeuuZk0sr4B3tge9K5Rt2GvAbPAObeTRs48cKrtdGe/93p2VZ0GzgPjbik9UqsMvhS7vNeDcj+vVFVjwFngDPCU20oP1S0GX2B/eLej89BRb4n7WeDd9tT8ZbeWHqjvga8Z/LDk5v0+Kft9t6p6HjgJHAcmgYn29oSfhTSUPxlc12CFwUVLFoArSRb382L/ALpfsparNmysAAAAAElFTkSuQmCC" style="width:13px; height:6px; object-fit:contain; filter:brightness(0) invert(1);"></button>
+            <button type="button" onclick="openCookMhdPopup('${rowId}', ${idx})" style="flex:1 1 auto; min-width:0; margin:0; box-sizing:border-box; display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.15; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:0 2px; height:34px; ${fieldStyle} border-radius:9px; opacity:${noExpiry ? "0.5" : "1"}; cursor:pointer; touch-action:manipulation;">
+                <span style="font-size:11px;">${mhdCombo.bigText}</span>
+                ${mhdCombo.smallText ? `<span onclick="event.stopPropagation(); _cookToggleMhdPrimary3('${rowId}', ${idx})" style="font-size:8.5px; opacity:0.65; margin-top:1px;">${mhdCombo.smallText}</span>` : ""}
+            </button>
+            <button type="button" onclick="_cookAdjustTileMhd3('${rowId}', ${idx}, 1, '${mhdPillValue}')" style="${mhdStepStyle}"><img src="data:image/png;base64,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" style="width:13px; height:13px; object-fit:contain; filter:brightness(0) invert(1);"></button>
+            <button type="button" onclick="event.stopPropagation(); _cookToggleTileNoExpiry('${rowId}', ${idx})" title="kein MHD nötig" style="flex:0 0 34px; width:34px; height:34px; box-sizing:border-box; margin:0; ${fieldStyle} border-radius:9px; font-size:12px; font-weight:bold; cursor:pointer; padding:0; touch-action:manipulation; opacity:${noExpiry ? "1" : "0.55"}; box-shadow:${noExpiry ? "0 0 0 2px rgba(255,255,255,0.9) inset" : "none"};">∞</button>
+        </div>`;
+
+    let dividerHtml = `<div style="height:1px; background:rgba(255,255,255,0.15); margin:10px 0;"></div>`;
+    let cookLowerBoxStyle = "background:rgba(255,255,255,0.09); border:1px solid rgba(255,255,255,0.14); border-radius:14px; padding:8px 10px; box-sizing:border-box;";
+    let openStateVal = (window.cookTileOpenState[rowId] || {})[idx];
+    let showOpenExtras = !excluded && (openStateVal === "open" || openStateVal === "cut");
+
+    return `
+    <div id="cookUnknownTile_${rowId}_${idx}" onclick="_cookUnknownTileClick('${rowId}', ${idx})" title="antippen: vollständig aufgebraucht" style="position:relative; width:300px; max-width:100%; background:${catColor}; border-radius:20px; padding:14px; box-shadow:0 4px 8px rgba(0,0,0,0.15); color:white; box-sizing:border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; cursor:pointer; touch-action:manipulation; outline:3px solid ${colorToRgba(catColor, 0.45)}; outline-offset:2px; ${excluded ? "" : "opacity:0.55;"}${excludedStyle} transition:opacity .15s ease;">
+        ${excluded ? `<div style="position:absolute; top:8px; right:12px; font-size:9.5px; font-weight:bold; letter-spacing:0.05em; text-transform:uppercase; opacity:0.85;">aufgebraucht</div>` : ""}
+        <div style="display:flex; align-items:flex-start; gap:12px;${innerLockStyle}">
+            <div style="flex-shrink:0; width:60px; height:60px;">${_cookTileImgWithRing3(item, ringColor, strokeDashoffset)}</div>
+            <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:6px;">
+                <div style="width:100%; height:20px; box-sizing:border-box; display:flex; align-items:center; font-size:14px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${item.name}</div>
+                <div onclick="event.stopPropagation();" style="height:30px; display:flex; align-items:center; gap:3px;">
+                    ${qtyMinusBtn}
+                    <input id="cookUnknownQty_${rowId}_${idx}" type="number" min="0" step="any" placeholder="–" data-unit="${displayUnit}" oninput="_cookUnknownQtyLiveInput('${rowId}', ${idx})" style="flex:1; min-width:0; height:30px; box-sizing:border-box; text-align:center; font-size:11px; ${fieldStyle} padding:0 1px;">
+                    ${qtyPlusBtn}
+                    ${unitSwiperHTML3(`cookUnknownUnit_${rowId}_${idx}`, displayUnit, catColor, "", "on-tile compact-xs", null, 26, 78)}
+                </div>
+            </div>
+        </div>
+        ${dividerHtml}
+        <div style="display:flex; flex-direction:column; gap:8px;${innerLockStyle}">
+            ${mhdRowHtml}
+            <div onclick="event.stopPropagation();" style="display:flex; flex-direction:column; gap:6px; ${excluded ? "" : cookLowerBoxStyle}">
+                <div style="height:30px; display:flex;">${excluded ? "" : _cookOpenStateButtonHtml(rowId, idx, item)}</div>
+                ${showOpenExtras ? `<div style="min-height:32px; display:flex; align-items:center; justify-content:center;">${_cookOpenStateStorageRowHtml(rowId, idx, item)}</div>` : ""}
+            </div>
+        </div>
+    </div>`;
+}
+
+// +/--Stepper fuer das freie Mengenfeld einer "Menge unbekannt"-Kachel
+// (siehe _cookUnknownQtyTileEditable3) - schreibt direkt ins Eingabefeld,
+// da es fuer diesen Fall bewusst keinen gespeicherten Ausgangswert gibt.
+function _cookStepUnknownQty(rowId, idx, delta) {
+    let el = document.getElementById(`cookUnknownQty_${rowId}_${idx}`);
+    if (!el) return;
+    let cur = parseFloat(el.value) || 0;
+    let next = Math.max(0, Math.round((cur + delta) * 100) / 100);
+    el.value = next > 0 ? next : "";
+    _cookUnknownQtyLiveInput(rowId, idx);
+}
+
 function _cookUnknownQtyTileEditable(rowId, idx, item) {
     let match = findCatalogMatch(item.name);
     let catColor = match ? getCategoryColor(match.cat) : "#8e5fae";
@@ -29419,7 +29732,10 @@ function _cookRenderTileList(rowId) {
     // dort) sowie "Bestand anpassen"/"Bestand aendern 2" bleiben unveraendert
     // beim alten Swiper.
     if (entry.unknownQty) {
-        initUnitSwiper(`cookUnknownUnit_${rowId}_${entry.idx}`);
+        // V3 nutzt auch hier den nicht scroll-basierten Swiper (siehe
+        // _cookUnknownQtyTileEditable3, unitSwiperHTML3).
+        if (window.cookReviewV3Mode) initUnitSwiper3(`cookUnknownUnit_${rowId}_${entry.idx}`);
+        else initUnitSwiper(`cookUnknownUnit_${rowId}_${entry.idx}`);
     } else if (window.cookReviewV3Mode) {
         initUnitSwiper3(`cookUnit_${rowId}_${entry.idx}`);
         // Teil-Öffnen-Regler ("Bestand anpassen 3", siehe
