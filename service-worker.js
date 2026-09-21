@@ -1,7 +1,7 @@
 // Automatisch generiert von generate_app.py - nicht manuell bearbeiten.
 // Bei jedem Skriptlauf aendert sich CACHE_VERSION, wodurch alte Caches
 // beim naechsten Seitenaufruf automatisch ersetzt werden.
-const CACHE_VERSION = "20260920-230351";
+const CACHE_VERSION = "20260921-130009";
 const CACHE_NAME = "nowa-cache-" + CACHE_VERSION;
 
 // Alles, was fuer die Offline-Nutzung vorab gecacht werden soll.
@@ -26,8 +26,22 @@ const PRECACHE_URLS = [
   "pics/comic-dots.webp",
   "pics/comic-grain.webp",
   "pics/comic-mesh.webp",
+  "pics/comic-pill-tex.webp",
+  "pics/comic-recipe-frame-1.webp",
+  "pics/comic-recipe-frame-2.webp",
+  "pics/comic-recipe-tex-1.webp",
+  "pics/comic-recipe-tex-2.webp",
   "pics/comic-speckle.webp",
+  "pics/comic-tile-frame-1.webp",
+  "pics/comic-tile-frame-2.webp",
+  "pics/comic-tile-frame-3.webp",
+  "pics/comic-tile-frame-4.webp",
+  "pics/comic-tile-shade-1.webp",
+  "pics/comic-tile-shade-2.webp",
+  "pics/comic-tile-shade-3.webp",
+  "pics/comic-tile-shade-4.webp",
   "pics/comic-wear.webp",
+  "pics/pantry-text.webp",
   "pics/paper-bg-comic-wide.webp",
   "pics/paper-bg-comic.webp",
   "pics/pimg_ananas.webp",
