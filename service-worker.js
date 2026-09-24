@@ -1,7 +1,7 @@
 // Automatisch generiert von generate_app.py - nicht manuell bearbeiten.
 // Bei jedem Skriptlauf aendert sich CACHE_VERSION, wodurch alte Caches
 // beim naechsten Seitenaufruf automatisch ersetzt werden.
-const CACHE_VERSION = "20260921-223757";
+const CACHE_VERSION = "20260924-140045";
 const CACHE_NAME = "nowa-cache-" + CACHE_VERSION;
 
 // Alles, was fuer die Offline-Nutzung vorab gecacht werden soll.
@@ -16,6 +16,13 @@ const PRECACHE_URLS = [
   "index.html",
   "manifest.json",
   "pics/bg-burst-tile.webp",
+  "pics/comic-act-frame.webp",
+  "pics/comic-act-tex-1.webp",
+  "pics/comic-act-tex-2.webp",
+  "pics/comic-act-tex-3.webp",
+  "pics/comic-act-tex-round-1.webp",
+  "pics/comic-act-tex-round-2.webp",
+  "pics/comic-act-tex-round-3.webp",
   "pics/comic-badge-lg-frame.webp",
   "pics/comic-badge-lg-tex.webp",
   "pics/comic-badge-sm-frame.webp",
@@ -39,6 +46,8 @@ const PRECACHE_URLS = [
   "pics/comic-recipe-frame-2.webp",
   "pics/comic-recipe-tex-1.webp",
   "pics/comic-recipe-tex-2.webp",
+  "pics/comic-rtile-frame.webp",
+  "pics/comic-rtile-shade.webp",
   "pics/comic-speckle.webp",
   "pics/comic-tile-frame-1.webp",
   "pics/comic-tile-frame-2.webp",
@@ -48,6 +57,8 @@ const PRECACHE_URLS = [
   "pics/comic-tile-shade-2.webp",
   "pics/comic-tile-shade-3.webp",
   "pics/comic-tile-shade-4.webp",
+  "pics/comic-tile2-frame.webp",
+  "pics/comic-tile2-shade.webp",
   "pics/comic-wear.webp",
   "pics/list-text.webp",
   "pics/pantry-text.webp",
