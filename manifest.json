@@ -2,8 +2,16 @@
   "name": "NoWa",
   "short_name": "NoWa",
   "description": "Vorratsverwaltung mit Ablaufdaten, Einkaufsliste und KI-Rezeptideen.",
+  "id": "./index.html",
   "start_url": "./index.html",
   "scope": "./",
+  "launch_handler": {
+    "client_mode": [
+      "navigate-existing",
+      "auto"
+    ]
+  },
+  "handle_links": "preferred",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#dbdcc2",

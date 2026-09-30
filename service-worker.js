@@ -1,7 +1,7 @@
 // Automatisch generiert von generate_app.py - nicht manuell bearbeiten.
 // Bei jedem Skriptlauf aendert sich CACHE_VERSION, wodurch alte Caches
 // beim naechsten Seitenaufruf automatisch ersetzt werden.
-const CACHE_VERSION = "20260929-125305";
+const CACHE_VERSION = "20260930-142516";
 const CACHE_NAME = "nowa-cache-" + CACHE_VERSION;
 
 // Alles, was fuer die Offline-Nutzung vorab gecacht werden soll.
@@ -15,47 +15,6 @@ const PRECACHE_URLS = [
   "icons/icon-512.png",
   "index.html",
   "manifest.json",
-  "pics/bg-burst-tile.webp",
-  "pics/comic-act-frame.webp",
-  "pics/comic-act-tex-1.webp",
-  "pics/comic-act-tex-2.webp",
-  "pics/comic-act-tex-3.webp",
-  "pics/comic-act-tex-round-1.webp",
-  "pics/comic-act-tex-round-2.webp",
-  "pics/comic-act-tex-round-3.webp",
-  "pics/comic-badge-lg-frame.webp",
-  "pics/comic-badge-lg-tex.webp",
-  "pics/comic-badge-sm-frame.webp",
-  "pics/comic-badge-sm-tex.webp",
-  "pics/comic-bar-bot-l.webp",
-  "pics/comic-bar-bot-mid.webp",
-  "pics/comic-bar-bot-r.webp",
-  "pics/comic-bar-bot.webp",
-  "pics/comic-bar-top-l.webp",
-  "pics/comic-bar-top-mid.webp",
-  "pics/comic-bar-top-r.webp",
-  "pics/comic-bar-top.webp",
-  "pics/comic-btn-frame.webp",
-  "pics/comic-btn-tex.webp",
-  "pics/comic-grain.webp",
-  "pics/comic-icon-tex.webp",
-  "pics/comic-pill-tex.webp",
-  "pics/comic-rtile-frame.webp",
-  "pics/comic-rtile-shade.webp",
-  "pics/comic-tile-frame-1.webp",
-  "pics/comic-tile-frame-2.webp",
-  "pics/comic-tile-frame-3.webp",
-  "pics/comic-tile-frame-4.webp",
-  "pics/comic-tile-shade-1.webp",
-  "pics/comic-tile-shade-2.webp",
-  "pics/comic-tile-shade-3.webp",
-  "pics/comic-tile-shade-4.webp",
-  "pics/comic-tile2-frame.webp",
-  "pics/comic-tile2-shade.webp",
-  "pics/list-text.webp",
-  "pics/pantry-text.webp",
-  "pics/paper-bg-comic-wide.webp",
-  "pics/paper-bg-comic.webp",
   "pics/pimg_ananas.webp",
   "pics/pimg_apfel.webp",
   "pics/pimg_aubergine.webp",
@@ -122,8 +81,7 @@ const PRECACHE_URLS = [
   "pics/pimg_traube.webp",
   "pics/pimg_weichk_se.webp",
   "pics/pimg_zucchini.webp",
-  "pics/pimg_zwiebel.webp",
-  "pics/recipes-text.webp"
+  "pics/pimg_zwiebel.webp"
 ];
 
 self.addEventListener("install", (event) => {
