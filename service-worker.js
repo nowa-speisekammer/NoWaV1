@@ -1,7 +1,7 @@
 // Automatisch generiert von generate_app.py - nicht manuell bearbeiten.
 // Bei jedem Skriptlauf aendert sich CACHE_VERSION, wodurch alte Caches
 // beim naechsten Seitenaufruf automatisch ersetzt werden.
-const CACHE_VERSION = "20261008-232352";
+const CACHE_VERSION = "20261009-140446";
 const CACHE_NAME = "nowa-cache-" + CACHE_VERSION;
 
 // Alles, was fuer die Offline-Nutzung vorab gecacht werden soll.
