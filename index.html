@@ -887,6 +887,9 @@ input[list]::-webkit-calendar-picker-indicator {
 #pantry .product-name { font-weight: 800; text-shadow: 0 1px 2px rgba(0,0,0,0.22); }
 #pantry .product-name b { font-weight: 800; }
 #pantry > p { width: 100%; color: #4a4d3e; font-weight: 700; opacity: 0.75; font-size: 13px; }
+/* Waehrend des Pinch-Zooms: teure Effekte aus, damit das Neu-Umbrechen der Kacheln fluessig bleibt */
+#pantry.pz-active .product, #pantry.pz-active .product * { transition: none !important; animation: none !important; }
+#pantry.pz-active .product { box-shadow: none !important; }
 #pantryHomeContent .empty-hint { color: #4a4d3e; }
 
 /* Rezepte im Waste-Stats-Stil (einfarbige Kacheln) */
@@ -3567,6 +3570,25 @@ input[id^="cookUnknownQty_"]::placeholder {
 .lk-instr { font-size: 13px; line-height: 1.6; white-space: pre-wrap; text-align: left; }
 @keyframes likedCardIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .liked-card { animation: none; } }
+/* ===== Gelikte Rezepte im neuen App-Stil (wie Postfach/Freunde/Einstellungen): helle Raender, weiche Schatten, runde Pillen ===== */
+.liked-card { background-image: none; border: 1.5px solid rgba(255,255,244,0.6); border-bottom-width: 1.5px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
+.liked-thumb > .liked-thumb-img { border: 1.5px solid rgba(255,255,244,0.85); box-shadow: 0 2px 6px rgba(0,0,0,0.22); }
+.liked-heart { background: #fffff4; border: none; box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+.liked-heart img { filter: none; }
+.liked-title { text-shadow: 0 1px 2px rgba(0,0,0,0.22); }
+.liked-source { color: #fff; opacity: 0.88; }
+.lk-stock { border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.22); }
+.lk-stock i { border: 1.5px solid rgba(0,0,0,0.18); }
+.liked-view-btn { background: #fffff4; color: var(--lk, #4f7cac); border: none; border-radius: 99px; box-shadow: 0 1px 3px rgba(0,0,0,0.25); margin-bottom: 0; padding: 9px 14px; }
+.liked-view-btn:active { transform: scale(0.95); box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+.liked-rm-btn { background: rgba(255,255,255,0.22); border: none; }
+.liked-rm-btn:hover { background: rgba(255,255,255,0.32); }
+.lk-legend { color: #2b2712; opacity: 0.75; }
+.lk-legend i { border: none; box-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+.lk-photo { border: 1.5px solid rgba(255,255,244,0.9); border-bottom-width: 1.5px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
+.lk-chip { border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.18); }
+.lk-chip-st i, .lk-ing i { border: 1.5px solid rgba(0,0,0,0.2); }
+
 
 .seg-switch {
     display: flex; gap: 2px; max-width: 420px; box-sizing: border-box;
@@ -3869,6 +3891,12 @@ input[id^="cookUnknownQty_"]::placeholder {
 .acct-tile-ico img { filter: brightness(0) invert(1); opacity: 1; }
 .acct-tile-label { text-shadow: 0 1px 2px rgba(0,0,0,0.22); }
 .acct-tile-count { background: #fffff4; color: #2b2712; border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+/* Handy-Fix: Icon-Pille darf nie zusammengedrueckt werden (wurde oval), Kachel waechst notfalls mit dem Inhalt */
+.acct-tile-ico { flex: 0 0 auto; aspect-ratio: 1 / 1; }
+.acct-tile-ico img { flex: 0 0 auto; }
+.acct-tile-label { flex: 0 0 auto; line-height: 1.15; max-width: 100%; text-align: center; }
+.acct-tile { min-height: 84px; aspect-ratio: auto; }
+.pq-tiles .acct-tile { min-height: 0; aspect-ratio: 1 / 1.02; }
 /* Einstellungen: Akkordeons als farbige Kacheln */
 .set-acc-main { background: none; box-shadow: none; overflow: visible; }
 .set-acc-head-main { background: var(--c, #4f7cac); border: 1.5px solid rgba(255,255,244,0.6); border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
@@ -3962,40 +3990,6 @@ input[id^="cookUnknownQty_"]::placeholder {
 .bd-b-emb { font-size: 2.3em; }
 .bd-pending::before { inset: 18% -8% -2% -8%; border-radius: 50%; }
 .bd-p, .bd-pulse { top: 58%; }
-/* ===== BeMeal im Waste-Stil ===== */
-.bm-card { background: var(--c); color: #fff; border: 1.5px solid rgba(255,255,244,0.6); border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
-.bm-photo { border: 1.5px solid rgba(255,255,244,0.6); border-radius: 14px; background: rgba(0,0,0,0.15); }
-.bm-photo::after { height: 46%; background: linear-gradient(to top, rgba(0,0,0,0.34), transparent); }
-.bm-who, .bm-circ, .bm-stars, .bm-chip, .bm-rpill { background: rgba(255,255,244,0.95); color: #2b2712; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 1px 3px rgba(0,0,0,0.28); }
-.bm-who .bm-me { background: var(--c); color: #fff; }
-.bm-time { opacity: 0.65; }
-.bm-circ img, .bm-chip.add img { filter: brightness(0); opacity: 0.65; }
-.bm-stars span { color: rgba(0,0,0,0.16); }
-.bm-stars span.on { color: #d9822b; text-shadow: none; }
-.bm-chip.mine { background: var(--c); color: #fff; }
-.bm-rpill-label { opacity: 0.55; }
-.bm-rpill .bm-save { background: var(--c); box-shadow: none; }
-.bm-rpill .bm-save span { background: #fff; }
-.bm-body, .bm-caption { color: #fff; }
-.bm-poll { background: rgba(255,255,255,0.18); }
-.bm-poll-head { opacity: 0.9; }
-.bm-opt { background: rgba(255,255,255,0.18); color: #fff; }
-.bm-opt-fill, .bm-opt.lead .bm-opt-fill { background: rgba(255,255,255,0.26); }
-.bm-opt.lead .bm-opt-fill { background: rgba(255,255,255,0.38); }
-.bm-opt.mine { border-color: #fffff4; }
-.bm-opt-dot { border-color: rgba(255,255,255,0.85); }
-.bm-opt.mine .bm-opt-dot { background: #fffff4; border-color: #fffff4; }
-.bm-opt-dot img { filter: brightness(0); opacity: 0.6; }
-.bm-opt-pct { opacity: 0.9; }
-.bm-comments { border-top-color: rgba(255,255,255,0.3); }
-.bm-ctxt { opacity: 0.95; }
-.bm-ctoggle { color: #fff; opacity: 0.8; }
-.bm-cform { background: #fffff4; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
-.bm-banner { background: rgb(217,130,43); color: #fff; border: 1.5px solid rgba(255,255,244,0.6); border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
-.bm-empty { background: rgb(94,136,168); color: #fff; border: 1.5px solid rgba(255,255,244,0.6); border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
-.bm-empty-ico { background: rgba(255,255,255,0.22); box-shadow: none; border-radius: 50%; }
-.bm-empty .nm-btn { background: #fffff4; color: #4a6f8c; border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
-.bm-empty .nm-btn img { filter: brightness(0); opacity: 0.65; }
 
 .top-split > .sb-pill {
     flex: 1 1 auto; min-width: 0; justify-content: flex-start; gap: 8px; padding: 0 3px 0 16px; overflow: hidden;
@@ -4311,6 +4305,41 @@ input[id^="cookUnknownQty_"]::placeholder {
 .bm-empty-title { font-size: 16px; font-weight: 800; }
 .bm-empty-sub { font-size: 12px; opacity: 0.6; line-height: 1.5; margin: 5px 0 14px; }
 .bm-empty .nm-btn { --c: var(--bar-accent, #6f87b3); }
+
+/* ===== BeMeal im Waste-Stil ===== */
+.bm-card { background: var(--c); color: #fff; border: 1.5px solid rgba(255,255,244,0.6); border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
+.bm-photo { border: 1.5px solid rgba(255,255,244,0.6); border-radius: 14px; background: rgba(0,0,0,0.15); }
+.bm-photo::after { height: 46%; background: linear-gradient(to top, rgba(0,0,0,0.34), transparent); }
+.bm-who, .bm-circ, .bm-stars, .bm-chip, .bm-rpill { background: rgba(255,255,244,0.95); color: #2b2712; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 1px 3px rgba(0,0,0,0.28); }
+.bm-who .bm-me { background: var(--c); color: #fff; }
+.bm-time { opacity: 0.65; }
+.bm-circ img, .bm-chip.add img { filter: brightness(0); opacity: 0.65; }
+.bm-stars span { color: rgba(0,0,0,0.16); }
+.bm-stars span.on { color: #d9822b; text-shadow: none; }
+.bm-chip.mine { background: var(--c); color: #fff; }
+.bm-rpill-label { opacity: 0.55; }
+.bm-rpill .bm-save { background: var(--c); box-shadow: none; }
+.bm-rpill .bm-save span { background: #fff; }
+.bm-body, .bm-caption { color: #fff; }
+.bm-poll { background: rgba(255,255,255,0.18); }
+.bm-poll-head { opacity: 0.9; }
+.bm-opt { background: rgba(255,255,255,0.18); color: #fff; }
+.bm-opt-fill, .bm-opt.lead .bm-opt-fill { background: rgba(255,255,255,0.26); }
+.bm-opt.lead .bm-opt-fill { background: rgba(255,255,255,0.38); }
+.bm-opt.mine { border-color: #fffff4; }
+.bm-opt-dot { border-color: rgba(255,255,255,0.85); }
+.bm-opt.mine .bm-opt-dot { background: #fffff4; border-color: #fffff4; }
+.bm-opt-dot img { filter: brightness(0); opacity: 0.6; }
+.bm-opt-pct { opacity: 0.9; }
+.bm-comments { border-top-color: rgba(255,255,255,0.3); }
+.bm-ctxt { opacity: 0.95; }
+.bm-ctoggle { color: #fff; opacity: 0.8; }
+.bm-cform { background: #fffff4; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+.bm-banner { background: rgb(217,130,43); color: #fff; border: 1.5px solid rgba(255,255,244,0.6); border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
+.bm-empty { background: rgb(94,136,168); color: #fff; border: 1.5px solid rgba(255,255,244,0.6); border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
+.bm-empty-ico { background: rgba(255,255,255,0.22); box-shadow: none; border-radius: 50%; }
+.bm-empty .nm-btn { background: #fffff4; color: #4a6f8c; border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+.bm-empty .nm-btn img { filter: brightness(0); opacity: 0.65; }
 </style>
 
 <script>
@@ -5070,6 +5099,9 @@ const AI_TASKS = {
     video:       Object.assign({}, AI_TIER_STANDARD, { timeoutMs: 300000 })
 };
 
+function hasAnyAiKey() {
+    return !!(getGeminiApiKey() || getMistralApiKey() || getAnthropicApiKey() || (typeof AI_CLAUDE_PROXY_URL !== "undefined" && AI_CLAUDE_PROXY_URL));
+}
 function getMistralApiKey() {
     try { return localStorage.getItem(MISTRAL_KEY_STORAGE) || ""; } catch (e) { return ""; }
 }
@@ -5369,6 +5401,7 @@ async function aiGenerate(task, body, opts) {
     let queue = ids.slice();
     let tried = {};
     let lastErr = null, bestSoft = null, escalated = false;
+    let fails = [];   // je Anbieter der erste Fehlergrund (fuer eine aussagekraeftige Meldung)
 
     while (queue.length) {
         let id = queue.shift();
@@ -5393,6 +5426,10 @@ async function aiGenerate(task, body, opts) {
         }
 
         lastErr = bad;
+        if (bad && !bad.skip) {
+            let pn = ({ gemini: "Gemini", mistral: "Mistral", anthropic: "Claude" })[route.provider] || route.provider;
+            if (!fails.some(f => f.p === pn)) fails.push({ p: pn, m: String((bad && bad.message) || bad).replace(/\s+/g, " ").slice(0, 90) });
+        }
         if (bad && bad.invalid) {
             let esc = (Array.isArray(cfg.escalate) ? cfg.escalate : [cfg.escalate]).find(x => x && usable(x) && !tried[x]);
             if (!escalated && esc) { escalated = true; queue.unshift(esc); }
@@ -5402,6 +5439,11 @@ async function aiGenerate(task, body, opts) {
         }
     }
     if (bestSoft) return bestSoft;
+    if (lastErr && fails.length > 1) {
+        let ne = new Error("KI nicht erreichbar - " + fails.map(f => f.p + ": " + f.m).join(" | "));
+        ne.status = lastErr.status; ne.fails = fails;
+        throw ne;
+    }
     throw lastErr || new Error("KI nicht erreichbar");
 }
 
@@ -8654,9 +8696,9 @@ function applyPlaceholderStyle() {
     document.documentElement.setAttribute("data-ph", PLACEHOLDER_STYLES[placeholderStyle] ? placeholderStyle : "original");
 }
 function placeholderPreviewHtml(k) {
-    return `<div data-ph="${k}" style="display:flex; align-items:center; justify-content:center; gap:10px; padding:12px 8px; border-radius:12px; background:#7aa874;">
-        <div class="no-image-placeholder-small" style="width:46px; height:46px; flex-shrink:0;"></div>
-        <div class="no-image-placeholder-rect" style="width:64px; height:46px; flex-shrink:0;"></div>
+    return `<div data-ph="${k}" style="display:flex; align-items:center; justify-content:center; gap:6px; padding:10px 6px; border-radius:12px; background:#7aa874; min-width:0; overflow:hidden; box-sizing:border-box;">
+        <div class="no-image-placeholder-small" style="width:36px; height:36px; flex:0 0 36px;"></div>
+        <div class="no-image-placeholder-rect" style="flex:1 1 0; min-width:0; max-width:52px; height:36px;"></div>
     </div>`;
 }
 function openPlaceholderPicker() {
@@ -8671,7 +8713,7 @@ function openPlaceholderPicker() {
 function _placeholderGridHtml() {
     return Object.keys(PLACEHOLDER_STYLES).map(k => {
         let on = k === placeholderStyle || (k === "original" && !PLACEHOLDER_STYLES[placeholderStyle]);
-        return `<button type="button" onclick="setPlaceholderStyle('${k}')" style="display:flex; flex-direction:column; align-items:stretch; gap:7px; padding:8px 8px 9px; border-radius:16px; cursor:pointer; font-family:inherit; box-sizing:border-box; border:2.5px solid #2b2d22; border-bottom-width:5px; background:${on ? "#ffd23f" : "#fffff4"};">
+        return `<button type="button" onclick="setPlaceholderStyle('${k}')" style="display:flex; flex-direction:column; align-items:stretch; gap:7px; min-width:0; padding:8px 6px 9px; border-radius:16px; cursor:pointer; font-family:inherit; box-sizing:border-box; border:2.5px solid #2b2d22; border-bottom-width:5px; background:${on ? "#ffd23f" : "#fffff4"};">
             ${placeholderPreviewHtml(k)}<span style="font-size:11.5px; font-weight:900; color:#2b2d22; line-height:1.15; text-align:center;">${PLACEHOLDER_STYLES[k].label}</span></button>`;
     }).join("");
 }
@@ -11934,7 +11976,9 @@ function toggleShoppingLabelsSetting(checked) {
 // ===== Pantry-Zoom (Apple-Fotos-Stil) =====
 // Stufenloses Zoomen per Zwei-Finger-Pinch (bzw. Trackpad-Pinch / Strg + Mausrad am Rechner). Per CSS "zoom" auf dem Raster:
 // Kacheln werden dabei echt groesser/kleiner und laufen live neu um (1 bis ca. 4 Spalten am Handy), der Punkt unter den Fingern bleibt stehen.
-const PANTRY_ZOOM_MIN = 0.5, PANTRY_ZOOM_MAX = 1.7;
+const PANTRY_ZOOM_MAX = 1.7;
+// Am Handy weiter rauszoomen koennen (>= 4 Kacheln pro Reihe), am Rechner bleibt es bei 0.5
+function pzMin() { return (window.innerWidth || 1024) <= 600 ? 0.45 : 0.5; }
 function applyPantryZoom() {
     let el = document.getElementById("pantry");
     if (!el) return;
@@ -11957,16 +12001,31 @@ function resetPantryZoom() {
     applyPantryZoom();
 }
 let _pzSaveTimer = null;
+let _pzRaf = 0, _pzPending = null, _pzIdleTimer = null;
 function _pzSetZoom(z, anchor) {
-    pantryZoom = Math.max(PANTRY_ZOOM_MIN, Math.min(PANTRY_ZOOM_MAX, z));
-    applyPantryZoom();
-    if (anchor && anchor.el && anchor.el.isConnected) {
-        let top = anchor.el.getBoundingClientRect().top;
-        let dy = top - anchor.y;
-        if (Math.abs(dy) > 0.5) window.scrollBy(0, dy);
-    }
-    clearTimeout(_pzSaveTimer);
-    _pzSaveTimer = setTimeout(() => { try { saveCustomData(); } catch (e) {} }, 400);
+    // Auf 2 %-Schritte runden und pro Frame hoechstens EIN Layout-Durchlauf (touchmove feuert deutlich oefter als 60x/s -> ruckelte am Handy)
+    z = Math.max(pzMin(), Math.min(PANTRY_ZOOM_MAX, Math.round(z / 0.02) * 0.02));
+    _pzPending = { z: z, anchor: anchor };
+    let pe = document.getElementById("pantry");
+    if (pe) pe.classList.add("pz-active");   // waehrend des Zoomens Schatten/Transitions aus (siehe CSS)
+    clearTimeout(_pzIdleTimer);
+    _pzIdleTimer = setTimeout(() => { let p2 = document.getElementById("pantry"); if (p2) p2.classList.remove("pz-active"); }, 180);
+    if (_pzRaf) return;
+    _pzRaf = requestAnimationFrame(() => {
+        _pzRaf = 0;
+        let p = _pzPending; _pzPending = null;
+        if (!p || Math.abs(p.z - pantryZoom) < 0.001) return;
+        pantryZoom = p.z;
+        applyPantryZoom();
+        let anchor = p.anchor;
+        if (anchor && anchor.el && anchor.el.isConnected) {
+            let top = anchor.el.getBoundingClientRect().top;
+            let dy = top - anchor.y;
+            if (Math.abs(dy) > 0.5) window.scrollBy(0, dy);
+        }
+        clearTimeout(_pzSaveTimer);
+        _pzSaveTimer = setTimeout(() => { try { saveCustomData(); } catch (e) {} }, 400);
+    });
 }
 function _pzAnchorAt(x, y) {
     let t = document.elementFromPoint(x, y);
@@ -16105,35 +16164,30 @@ function openAiCaptureModal() {
     let color = getActionBarColor();
     let camSvg = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-2h6l2 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="14" r="3.5"/></svg>`;
     let receiptSvg = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17l-2.5-1.5L13 22l-2.5-1.5L8 22l-2-1.5V2z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>`;
-    let receiptOnlySvg = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17l-2.5-1.5L13 22l-2.5-1.5L8 22l-2-1.5V2z"/><path d="M9 7h6M9 11h6M9 15h4"/><circle cx="17" cy="16" r="5" fill="white" stroke="none"/><path d="M15.5 16l1 1 2-2" stroke="#5a9098" stroke-width="1.8"/></svg>`;
+    let receiptOnlySvg = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l3 3v17l-2.5-1.5L13 22l-2.5-1.5L8 22l-2-1.5V2z"/><path d="M9 7h6M9 11h6M9 15h4"/><circle cx="17" cy="16" r="5" fill="white" stroke="none"/><path d="M15.5 16l1 1 2-2" stroke="#3d7f8a" stroke-width="1.8"/></svg>`;
     let videoSvg = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="13" height="12" rx="2.5"/><path d="M15 9.5l6-3.5v12l-6-3.5z"/></svg>`;
     let barcodeSvg = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v14M6 5v14M10 5v14M13 5v14M17 5v14M21 5v14"/></svg>`;
 
-    function row(iconSvg, iconBg, title, subtitle, onclick, disabled) {
-        return `
-        <button type="button" ${disabled ? "" : `onclick="${onclick}"`} style="width:100%; box-sizing:border-box; display:flex; align-items:center; gap:12px; text-align:left; background:${disabled ? "#f4f4f4" : "white"}; border:1.5px solid ${disabled ? "#eee" : iconBg + "30"}; border-radius:16px; padding:11px 13px; margin-bottom:9px; cursor:${disabled ? "default" : "pointer"}; box-shadow:${disabled ? "none" : "0 2px 8px rgba(0,0,0,0.07)"}; opacity:${disabled ? "0.62" : "1"}; transition:transform 0.14s ease, box-shadow 0.14s ease;">
-            <div style="width:38px; height:38px; border-radius:11px; background:${iconBg}; display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 2px 6px rgba(0,0,0,0.15);">${iconSvg}</div>
+    function row(iconSvg, bg, title, sub, onclick) {
+        return `<button type="button" onclick="${onclick}" style="width:100%; box-sizing:border-box; display:flex; align-items:center; gap:12px; text-align:left; margin:0 0 9px; padding:10px 12px; cursor:pointer; font-family:inherit; color:#fffff4; border:1.5px solid rgba(255,255,244,0.6); border-radius:20px; background-color:${bg}; background-image:radial-gradient(rgba(0,0,0,0.13) 1.2px, transparent 1.5px); background-size:9px 9px; box-shadow:0 4px 12px rgba(0,0,0,0.18); -webkit-tap-highlight-color:transparent;">
+            <div style="width:40px; height:40px; flex:0 0 40px; border-radius:50%; background:rgba(255,255,255,0.22); display:flex; align-items:center; justify-content:center;">${iconSvg}</div>
             <div style="flex:1; min-width:0;">
-                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-weight:bold; font-size:13.5px; color:#222;">${title}</div>
-                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:10.5px; color:#888; margin-top:2px;">${subtitle}</div>
+                <div style="font-size:14px; font-weight:900; line-height:1.15; text-shadow:0 1px 2px rgba(0,0,0,0.22);">${title}</div>
+                <div style="font-size:10.5px; font-weight:700; line-height:1.2; margin-top:2px; opacity:0.85;">${sub}</div>
             </div>
-            ${disabled ? `<span style="font-size:9px; font-weight:bold; letter-spacing:0.04em; text-transform:uppercase; color:#aaa; background:#e6e6e6; border-radius:8px; padding:3px 7px; flex-shrink:0;">bald</span>` : `<span style="opacity:0.25; font-size:16px; flex-shrink:0;">&rsaquo;</span>`}
+            <span style="flex-shrink:0; font-size:22px; line-height:1; opacity:0.7;">&rsaquo;</span>
         </button>`;
     }
 
     createModal(`
-        <div class="custom-modal-box" style="--modal-accent:${color}; max-width:320px; padding:22px 18px 18px;">
-            <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:4px;">
-                ${settingsBadge(camSvgAsDataUri(), 34)}
-                <h2 style="margin:0; font-size:18px;">Produkte erkennen</h2>
-            </div>
-            <p style="font-size:11.5px; opacity:0.55; margin:6px 0 16px; line-height:1.4;">Foto(s) aufnehmen - die KI erkennt die Lebensmittel automatisch.</p>
-            ${row(camSvg, color, "Einkaufsfoto", "1 Foto - schnell", "closeAiCaptureModal(); startAiSinglePhotoCapture();")}
-            ${row(receiptSvg, "#5a9098", "Einkauf + Kassenzettel", "Einkaufsfoto + Kassenzettel (Foto oder Screenshot)", "closeAiCaptureModal(); startAiTwoPhotoCapture();")}
-            ${row(receiptOnlySvg, "#3d7f8a", "Nur Kassenzettel", "Foto oder Screenshot - Kamera oder Galerie", "closeAiCaptureModal(); startAiReceiptOnlyCapture();")}
-            ${row(videoSvg, "#b06fa3", "Live-Scan", "Produkt drehen, ein Tap pro Artikel", "closeAiCaptureModal(); openAiLiveScanner();")}
-            ${barcodeScanEnabled ? row(barcodeSvg, "#7d6b4f", "Barcode scannen", "Viele Produkte sind evtl. nicht erfasst", "closeAiCaptureModal(); openBarcodeScanner();") : ""}
-            <button onclick="closeAiCaptureModal()" style="margin-top:6px; background:#999; color:white; border:none; border-radius:12px; padding:9px 22px; cursor:pointer; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-weight:bold; font-size:13px; width:100%;">abbrechen</button>
+        <div class="custom-modal-box" style="--modal-accent:#2b2d22; max-width:340px; padding:20px 14px 11px; background:#dbdcc2; border:2.5px solid #2b2d22; border-bottom-width:6px;">
+            ${modalCloseX("closeAiCaptureModal()")}
+            <div style="font-size:17px; font-weight:900; color:#2b2d22; padding:2px 0 14px;">Produkte erkennen</div>
+            ${row(camSvg, color, "Einkaufsfoto", "1 Foto", "closeAiCaptureModal(); startAiSinglePhotoCapture();")}
+            ${row(receiptSvg, "#5a9098", "Einkauf + Kassenzettel", "2 Fotos", "closeAiCaptureModal(); startAiTwoPhotoCapture();")}
+            ${row(receiptOnlySvg, "#3d7f8a", "Nur Kassenzettel", "Foto oder Screenshot", "closeAiCaptureModal(); startAiReceiptOnlyCapture();")}
+            ${row(videoSvg, "#b06fa3", "Live-Scan", "Produkt drehen, Tap pro Artikel", "closeAiCaptureModal(); openAiLiveScanner();")}
+            ${barcodeScanEnabled ? row(barcodeSvg, "#7d6b4f", "Barcode scannen", "Nicht alle Produkte erfasst", "closeAiCaptureModal(); openBarcodeScanner();") : ""}
         </div>
     `, {id: "aiCaptureModalOverlay", closeOnBackdrop: true});
 }
@@ -16443,7 +16497,7 @@ async function handleAiReceiptOnlyCapture(input) {
     input.value = "";
     if (!file) return;
 
-    if (getReceiptProvider() !== "lokal" && !getGeminiApiKey()) {
+    if (getReceiptProvider() !== "lokal" && !hasAnyAiKey()) {
         openGeminiKeyPrompt(() => handleAiReceiptOnlyCapture.call(null, { files: [file], value: "" }));
         return;
     }
@@ -16485,7 +16539,7 @@ async function handleAiCamCapture(input) {
     input.value = "";
     if (!file) { aiTwoPhotoState = null; return; }
 
-    if (!getGeminiApiKey()) {
+    if (!hasAnyAiKey()) {
         let stateAtCapture = aiTwoPhotoState;
         openGeminiKeyPrompt(() => { aiTwoPhotoState = stateAtCapture; handleAiCamCapture.call(null, { files: [file], value: "" }); });
         return;
@@ -16528,7 +16582,7 @@ async function handleAiCamCapture(input) {
 
 
 async function openAiLiveScanner() {
-    if (!getGeminiApiKey()) { openGeminiKeyPrompt(() => openAiLiveScanner()); return; }
+    if (!hasAnyAiKey()) { openGeminiKeyPrompt(() => openAiLiveScanner()); return; }
     aiLiveScanStream = null;
     aiLiveScanItems = [];
     aiLiveScanBusy = false;
@@ -16862,9 +16916,8 @@ einheit ist AUSSCHLIESSLICH eines von genau diesen fünf Werten - sonst nichts: 
 }
 
 async function callGeminiVision(promptText, imageBase64DataUrls, task) {
-    let apiKey = getGeminiApiKey();
-    if (!apiKey) {
-        showToast("⚠️ Kein Gemini API-Key hinterlegt");
+    if (!hasAnyAiKey()) {
+        showToast("⚠️ Kein KI-API-Key hinterlegt");
         return null;
     }
     let parts = [{ text: promptText }].concat(
@@ -17181,7 +17234,7 @@ function openStockMenuModal() {
 }
 
 function openStockUpdateCapture() {
-    if (!getGeminiApiKey()) { openGeminiKeyPrompt(() => openStockUpdateCapture()); return; }
+    if (!hasAnyAiKey()) { openGeminiKeyPrompt(() => openStockUpdateCapture()); return; }
     if (!pantry.length) {
         showToast('Speisekammer ist noch leer - nutze stattdessen "Foto erkennen"');
         return;
@@ -27234,7 +27287,7 @@ function openShoppingList() {
         </div>
 
         <div id="shoppingHomeContent">
-            ${pageHeaderHtml({ title: "Shopping List", sub: _shoppingHeaderSub(), acts: showShoppingSortIcon ? _shoppingHeaderActs() : [], rowId: "shoppingCategoryIconRow", h1Class: "" })}
+            ${pageHeaderHtml({ title: "List", sub: _shoppingHeaderSub(), acts: showShoppingSortIcon ? _shoppingHeaderActs() : [], rowId: "shoppingCategoryIconRow", h1Class: "" })}
             <!-- "nach Kategorie filtern"-Icon direkt unter der Überschrift, als
                  einzelnes weißes Icon (siehe #shoppingCategoryIconRow-CSS-Regel) -
                  exakt an derselben Stelle/im selben Stil wie die Schnellzugriffs-
