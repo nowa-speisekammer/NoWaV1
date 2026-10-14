@@ -3990,6 +3990,40 @@ input[id^="cookUnknownQty_"]::placeholder {
 .bd-b-emb { font-size: 2.3em; }
 .bd-pending::before { inset: 18% -8% -2% -8%; border-radius: 50%; }
 .bd-p, .bd-pulse { top: 58%; }
+/* ===== BeMeal im Waste-Stil ===== */
+.bm-card { background: var(--c); color: #fff; border: 1.5px solid rgba(255,255,244,0.6); border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
+.bm-photo { border: 1.5px solid rgba(255,255,244,0.6); border-radius: 14px; background: rgba(0,0,0,0.15); }
+.bm-photo::after { height: 46%; background: linear-gradient(to top, rgba(0,0,0,0.34), transparent); }
+.bm-who, .bm-circ, .bm-stars, .bm-chip, .bm-rpill { background: rgba(255,255,244,0.95); color: #2b2712; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 1px 3px rgba(0,0,0,0.28); }
+.bm-who .bm-me { background: var(--c); color: #fff; }
+.bm-time { opacity: 0.65; }
+.bm-circ img, .bm-chip.add img { filter: brightness(0); opacity: 0.65; }
+.bm-stars span { color: rgba(0,0,0,0.16); }
+.bm-stars span.on { color: #d9822b; text-shadow: none; }
+.bm-chip.mine { background: var(--c); color: #fff; }
+.bm-rpill-label { opacity: 0.55; }
+.bm-rpill .bm-save { background: var(--c); box-shadow: none; }
+.bm-rpill .bm-save span { background: #fff; }
+.bm-body, .bm-caption { color: #fff; }
+.bm-poll { background: rgba(255,255,255,0.18); }
+.bm-poll-head { opacity: 0.9; }
+.bm-opt { background: rgba(255,255,255,0.18); color: #fff; }
+.bm-opt-fill, .bm-opt.lead .bm-opt-fill { background: rgba(255,255,255,0.26); }
+.bm-opt.lead .bm-opt-fill { background: rgba(255,255,255,0.38); }
+.bm-opt.mine { border-color: #fffff4; }
+.bm-opt-dot { border-color: rgba(255,255,255,0.85); }
+.bm-opt.mine .bm-opt-dot { background: #fffff4; border-color: #fffff4; }
+.bm-opt-dot img { filter: brightness(0); opacity: 0.6; }
+.bm-opt-pct { opacity: 0.9; }
+.bm-comments { border-top-color: rgba(255,255,255,0.3); }
+.bm-ctxt { opacity: 0.95; }
+.bm-ctoggle { color: #fff; opacity: 0.8; }
+.bm-cform { background: #fffff4; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+.bm-banner { background: rgb(217,130,43); color: #fff; border: 1.5px solid rgba(255,255,244,0.6); border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
+.bm-empty { background: rgb(94,136,168); color: #fff; border: 1.5px solid rgba(255,255,244,0.6); border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
+.bm-empty-ico { background: rgba(255,255,255,0.22); box-shadow: none; border-radius: 50%; }
+.bm-empty .nm-btn { background: #fffff4; color: #4a6f8c; border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+.bm-empty .nm-btn img { filter: brightness(0); opacity: 0.65; }
 
 .top-split > .sb-pill {
     flex: 1 1 auto; min-width: 0; justify-content: flex-start; gap: 8px; padding: 0 3px 0 16px; overflow: hidden;
@@ -4305,41 +4339,6 @@ input[id^="cookUnknownQty_"]::placeholder {
 .bm-empty-title { font-size: 16px; font-weight: 800; }
 .bm-empty-sub { font-size: 12px; opacity: 0.6; line-height: 1.5; margin: 5px 0 14px; }
 .bm-empty .nm-btn { --c: var(--bar-accent, #6f87b3); }
-
-/* ===== BeMeal im Waste-Stil ===== */
-.bm-card { background: var(--c); color: #fff; border: 1.5px solid rgba(255,255,244,0.6); border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
-.bm-photo { border: 1.5px solid rgba(255,255,244,0.6); border-radius: 14px; background: rgba(0,0,0,0.15); }
-.bm-photo::after { height: 46%; background: linear-gradient(to top, rgba(0,0,0,0.34), transparent); }
-.bm-who, .bm-circ, .bm-stars, .bm-chip, .bm-rpill { background: rgba(255,255,244,0.95); color: #2b2712; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 1px 3px rgba(0,0,0,0.28); }
-.bm-who .bm-me { background: var(--c); color: #fff; }
-.bm-time { opacity: 0.65; }
-.bm-circ img, .bm-chip.add img { filter: brightness(0); opacity: 0.65; }
-.bm-stars span { color: rgba(0,0,0,0.16); }
-.bm-stars span.on { color: #d9822b; text-shadow: none; }
-.bm-chip.mine { background: var(--c); color: #fff; }
-.bm-rpill-label { opacity: 0.55; }
-.bm-rpill .bm-save { background: var(--c); box-shadow: none; }
-.bm-rpill .bm-save span { background: #fff; }
-.bm-body, .bm-caption { color: #fff; }
-.bm-poll { background: rgba(255,255,255,0.18); }
-.bm-poll-head { opacity: 0.9; }
-.bm-opt { background: rgba(255,255,255,0.18); color: #fff; }
-.bm-opt-fill, .bm-opt.lead .bm-opt-fill { background: rgba(255,255,255,0.26); }
-.bm-opt.lead .bm-opt-fill { background: rgba(255,255,255,0.38); }
-.bm-opt.mine { border-color: #fffff4; }
-.bm-opt-dot { border-color: rgba(255,255,255,0.85); }
-.bm-opt.mine .bm-opt-dot { background: #fffff4; border-color: #fffff4; }
-.bm-opt-dot img { filter: brightness(0); opacity: 0.6; }
-.bm-opt-pct { opacity: 0.9; }
-.bm-comments { border-top-color: rgba(255,255,255,0.3); }
-.bm-ctxt { opacity: 0.95; }
-.bm-ctoggle { color: #fff; opacity: 0.8; }
-.bm-cform { background: #fffff4; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
-.bm-banner { background: rgb(217,130,43); color: #fff; border: 1.5px solid rgba(255,255,244,0.6); border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
-.bm-empty { background: rgb(94,136,168); color: #fff; border: 1.5px solid rgba(255,255,244,0.6); border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.18); }
-.bm-empty-ico { background: rgba(255,255,255,0.22); box-shadow: none; border-radius: 50%; }
-.bm-empty .nm-btn { background: #fffff4; color: #4a6f8c; border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
-.bm-empty .nm-btn img { filter: brightness(0); opacity: 0.65; }
 </style>
 
 <script>
@@ -6528,7 +6527,7 @@ const PX_DEFAULT_PIECE_G = { "ei": 60, "eier": 60, "zwiebel": 110, "zwiebeln": 1
 
 function _pxNormalize() {
     if (!productExtras || typeof productExtras !== "object") productExtras = {};
-    ["price", "nutrition", "weights", "hist", "image", "defaults", "openDefaults", "cutDefaults"].forEach(k => {
+    ["price", "nutrition", "weights", "hist", "image", "defaults", "openDefaults", "cutDefaults", "bon"].forEach(k => {
         if (!productExtras[k] || typeof productExtras[k] !== "object") productExtras[k] = {};
     });
 }
@@ -6635,6 +6634,511 @@ function _pxNamePackSize(name) {
     if (nx && nx.toLowerCase() !== nx.toUpperCase()) return 1;
     let n = parseInt(m[1], 10);
     return (n >= 2 && n <= 50) ? n : 1;
+}
+
+// ===========================================================================================
+// Kassenzettelnamen & Mengenerkennung
+// Pro Sortiments-Produkt koennen Kassenzettelnamen (so wie sie auf dem Bon stehen) hinterlegt sein:
+//   productExtras.bon[produktKey] = [ { t: normalisierter Bon-Text, d: Bon-Text wie gedruckt, q: Inhalt je gekaufter Einheit,
+//                                       u: Einheit ("" = Stueck), p: Preis je gekaufter Einheit | null, s: Markt | "", n: Bestaetigungen, at: Zeitstempel } ]
+// Damit werden beim Kassenzettel-Scan (Gemini UND lokale OCR) Name + Menge direkt richtig vorbelegt; im Add-items-Mengen-Popup
+// stehen zusaetzlich Vorschlaege (gemerkt / aus dem Bon-Text / zuletzt gekauft / KI) zum Antippen bereit.
+// ===========================================================================================
+const BON_MAX_PER_PRODUCT = 6;
+const BON_FUZZY_APPLY = 0.9;    // ab hier wird der Name automatisch uebernommen (OCR-Tippfehler-tolerant)
+const BON_FUZZY_HINT = 0.78;    // darunter nur als Vorschlag in der Lupen-Liste
+
+function _bonNorm(s) {
+    s = String(s || "").toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");
+    s = s.replace(/(\d+)\s*(?:liter|ltr)\b/g, "$1l");
+    s = s.replace(/(\d+)\s*[x\u00d7]\s*(\d)/g, "$1x$2");
+    s = s.replace(/(\d+)[.,](\d+)\s*(kg|g|ml|cl|l)\b/g, "$1.$2$3");
+    s = s.replace(/(\d+)\s*(kg|g|ml|cl|l)\b/g, "$1$2");
+    s = s.replace(/(\d+)\s*(?:er|stk|st|stueck)\b/g, "$1er");
+    s = s.replace(/[^a-z0-9.]+/g, " ");
+    s = s.replace(/([^0-9])\./g, "$1 ").replace(/\.(?![0-9])/g, " ");
+    return s.replace(/\s+/g, " ").trim();
+}
+
+// Zahlen-Tokens (z. B. "10er", "500g"): muessen bei einem unscharfen Treffer IDENTISCH sein - "10er" darf nie auf "6er" matchen.
+function _bonNums(n) {
+    return String(n || "").split(" ").filter(w => /^\d+(?:\.\d+)?(?:x\d+(?:\.\d+)?)?(?:kg|g|ml|cl|l|er)?$/.test(w)).sort().join("|");
+}
+
+function _bonLev(a, b) {
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    let prev = new Array(b.length + 1), cur = new Array(b.length + 1);
+    for (let j = 0; j <= b.length; j++) prev[j] = j;
+    for (let i = 1; i <= a.length; i++) {
+        cur[0] = i;
+        for (let j = 1; j <= b.length; j++) {
+            let cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+            cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+        }
+        let tmp = prev; prev = cur; cur = tmp;
+    }
+    return prev[b.length];
+}
+
+function _bonSimilarity(a, b) {
+    if (a === b) return 1;
+    if (Math.min(a.length, b.length) < 6) return 0;
+    if (_bonNums(a) !== _bonNums(b)) return 0;
+    return 1 - _bonLev(a, b) / Math.max(a.length, b.length);
+}
+
+function _bonRound(v) { return Math.round(v * 100) / 100; }
+
+function _bonNiceUnit(v, u) {
+    if (u === "cl") { v = v * 10; u = "ml"; }
+    if (u === "g" && v >= 1000 && v % 1000 === 0) return { menge: v / 1000, einheit: "kg" };
+    if (u === "ml" && v >= 1000 && v % 1000 === 0) return { menge: v / 1000, einheit: "l" };
+    return { menge: v, einheit: u === "kg" || u === "g" || u === "ml" || u === "l" ? u : "" };
+}
+
+function _bonFmtQty(menge, einheit) {
+    return String(_bonRound(menge)).replace(".", ",") + (einheit ? "\u2009" + einheit : "\u2009Stk");
+}
+
+// Mengenangaben aus einem Bon-/Produkttext lesen: "10er", "6 Stk", "500g", "1,5 l", "6x0,33l", "250 g"
+// kind: "count" (Stueck je Packung), "size" (Gewicht/Volumen je Packung), "total" (Gesamtinhalt bei Mehrfachpackungen)
+function _bonParseQty(text) {
+    let s = String(text || "").toLowerCase().replace(/(\d),(\d)/g, "$1.$2");
+    let out = [];
+    let add = (menge, einheit, kind) => {
+        if (!(menge > 0) || !isFinite(menge)) return;
+        menge = _bonRound(menge);
+        if (out.some(o => o.menge === menge && o.einheit === einheit)) return;
+        out.push({ menge: menge, einheit: einheit, kind: kind });
+    };
+    let multiRe = /(?:^|[^0-9.])(\d{1,2})\s*[x\u00d7]\s*(\d+(?:\.\d+)?)\s*(kg|g|ml|cl|l)\b/g;
+    let m;
+    while ((m = multiRe.exec(s))) {
+        let n = parseInt(m[1], 10);
+        if (n >= 2 && n <= 50) {
+            add(n, "", "count");
+            let t = _bonNiceUnit(parseFloat(m[2]) * n, m[3]);
+            add(t.menge, t.einheit, "total");
+        }
+    }
+    s = s.replace(multiRe, " ");
+    let sizeRe = /(\d+(?:\.\d+)?)\s*(kg|g|ml|cl|l|liter)\b/g;
+    while ((m = sizeRe.exec(s))) {
+        let u = m[2] === "liter" ? "l" : m[2];
+        let t = _bonNiceUnit(parseFloat(m[1]), u);
+        add(t.menge, t.einheit, "size");
+    }
+    let cntRe = /(?:^|[^0-9.])(\d{1,2})\s*(?:er|stk|st|stueck|stück)\b/g;
+    while ((m = cntRe.exec(s))) {
+        let n = parseInt(m[1], 10);
+        if (n >= 2 && n <= 50) add(n, "", "count");
+    }
+    return out;
+}
+
+// Bon-Text -> bestes gemerktes Produkt (exakt oder unscharf). Markt-Treffer und haeufig bestaetigte Eintraege gewinnen bei Gleichstand.
+function _bonFind(bonText, shop) {
+    _pxNormalize();
+    let t = _bonNorm(bonText);
+    if (!t) return null;
+    let B = productExtras.bon, best = null, shopN = shop ? _bonNorm(shop) : "";
+    Object.keys(B).forEach(key => {
+        (B[key] || []).forEach((e, idx) => {
+            if (!e || !e.t) return;
+            let score = _bonSimilarity(e.t, t);
+            if (score < BON_FUZZY_HINT) return;
+            let rank = score + (shopN && e.s && _bonNorm(e.s) === shopN ? 0.02 : 0) + Math.min(e.n || 1, 10) * 0.001;
+            if (best && rank <= best.rank) return;
+            let m = null;
+            try { m = findCatalogMatch(key); } catch (err) { m = null; }
+            if (!m) return;   // Produkt gibt es im Sortiment nicht mehr
+            best = { key: key, idx: idx, entry: e, score: score, rank: rank, exact: score === 1, name: m.name };
+        });
+    });
+    return best;
+}
+
+// Wie oft wurde die Position gekauft, und wie rechnet man einen Packungsinhalt auf die Kaufmenge hoch?
+// bonCount = Anzahl gekaufter Verkaufseinheiten laut Bon (0 = nicht zaehlbar, z. B. Gewichtsposition).
+function _bonScale(it, c) {
+    if (!c || !(c.menge > 0)) return null;
+    if (it && it.bonCount > 0) {
+        let n = it.bonCount, cur = Number(it.menge) || 0;
+        // Steht der Inhalt schon in 'menge' (z. B. die KI hat bei "Eier 10er" direkt 10 geliefert), nicht noch einmal multiplizieren.
+        if (c.einheit === "" && (it.einheit || "") === "" && c.menge > 1 && cur >= c.menge && cur % c.menge === 0) n = cur / c.menge;
+        return { menge: _bonRound(c.menge * n), einheit: c.einheit, n: n };
+    }
+    return { menge: _bonRound(c.menge), einheit: c.einheit, n: 1 };
+}
+
+function _bonFill(it, c) {
+    if (!(it.bonCount > 0)) return false;   // Gewichtspositionen (0,485 kg) bleiben unangetastet
+    let r = _bonScale(it, c);
+    if (!r) return false;
+    it.menge = r.menge;
+    it.einheit = r.einheit;
+    it.bonCount = r.n;   // gekaufte Packungen (merkt sich, wie der Inhalt spaeter beim Lernen zurueckgerechnet wird)
+    it.bonFilled = true;
+    return true;
+}
+
+function _bonEnrichOne(it, shop) {
+    let bon = String(it.bon || "").trim();
+    if (!bon) return;
+    let m0 = Number(it.menge);
+    it.bonCount = ((it.einheit || "") === "" && m0 > 0 && Math.round(m0) === m0) ? m0 : 0;
+    let hit = _bonFind(bon, it.bonShop || shop);
+    if (hit) {
+        if (hit.exact || hit.score >= BON_FUZZY_APPLY) {
+            it.name = hit.name;
+            it.bonSrc = "lern";
+            _bonFill(it, { menge: hit.entry.q, einheit: hit.entry.u || "" });
+        } else {
+            (it.bonCand = it.bonCand || []).push({ name: hit.name, score: hit.score });
+        }
+    }
+    if (!it.bonFilled) {
+        // Kein gemerkter Treffer: Menge nur dann direkt setzen, wenn der Bon-Text GENAU eine Packungsangabe enthaelt
+        let c = _bonParseQty(bon).filter(x => x.kind !== "total");
+        if (c.length === 1) {
+            _bonFill(it, c[0]);
+            if (it.bonFilled) {
+                it.bonSrc = it.bonSrc || "name";
+                // Lokale OCR liefert die Bon-Zeile als Namen ("Milch 1l"): die Mengenangabe steckt jetzt im Mengenfeld, der Name wird sauber ("Milch")
+                if (_bonNorm(it.name) === _bonNorm(bon)) it.name = _bonStripQty(it.name);
+            }
+        }
+    }
+}
+
+function _bonStripQty(name) {
+    let s = String(name || "");
+    let r = s.replace(/\b\d+\s*[x\u00d7]\s*\d+(?:[.,]\d+)?\s*(?:kg|g|ml|cl|l)\b/gi, " ")
+        .replace(/\b\d+(?:[.,]\d+)?\s*(?:kg|g|ml|cl|l|liter)\b/gi, " ")
+        .replace(/\b\d{1,2}\s*(?:er|stk\.?|st\.?|stück|stueck)(?![a-zäöüß])/gi, " ");
+    r = r.replace(/\s+/g, " ").trim();
+    return r.length >= 2 ? r : s;
+}
+
+function _bonEnrichItems(items, shop) {
+    (items || []).forEach(it => {
+        try { _bonEnrichOne(it, shop); } catch (e) { console.warn("Kassenzettelnamen-Abgleich fehlgeschlagen:", e); }
+    });
+    return items;
+}
+
+function _bonBaseToDisplay(b, type) {
+    if (!(b > 0)) return null;
+    if (type === "count") return { menge: _bonRound(b), einheit: "" };
+    if (type === "weight") return _bonNiceUnit(b, "g");
+    if (type === "volume") return _bonNiceUnit(b, "ml");
+    return null;
+}
+
+// Gekaufte Mengen aus dem Einkaufsverlauf (haeufigste zuerst)
+function _bonHistSizes(key) {
+    _pxNormalize();
+    let rec = productExtras.hist[key];
+    if (!rec || !rec.e || !rec.e.length) return [];
+    let cnt = new Map();
+    rec.e.slice(-PX_HIST_MAX).forEach(x => {
+        let c = _bonBaseToDisplay(x.b, x.type);
+        if (!c) return;
+        let k = c.menge + "|" + c.einheit;
+        let o = cnt.get(k) || { menge: c.menge, einheit: c.einheit, n: 0, last: 0 };
+        o.n++; o.last = Math.max(o.last, x.at || 0);
+        cnt.set(k, o);
+    });
+    return Array.from(cnt.values()).sort((a, b) => b.n - a.n || b.last - a.last).slice(0, 3);
+}
+
+// Vorschlagsliste fuer das Mengen-Popup einer Add-items-Kachel
+function _bonSuggestions(it) {
+    _pxNormalize();
+    let list = [];
+    let push = (menge, einheit, src, abs) => {
+        let c = abs ? { menge: menge, einheit: einheit } : _bonScale(it, { menge: menge, einheit: einheit });
+        if (!c || !(c.menge > 0)) return;
+        c.einheit = c.einheit || "";
+        if (list.some(x => x.menge === c.menge && x.einheit === c.einheit)) return;
+        list.push({ menge: c.menge, einheit: c.einheit, src: src });
+    };
+    let name = String(it.name || "").trim();
+    let m = null;
+    try { m = name ? findCatalogMatch(name) : null; } catch (e) { m = null; }
+    let key = m ? m.name.toLowerCase() : "";
+    let bon = String(it.bon || "").trim();
+    let t = _bonNorm(bon);
+    if (key) {
+        let entries = (productExtras.bon[key] || []).slice();
+        entries.sort((a, b) => ((t && b.t === t) ? 1 : 0) - ((t && a.t === t) ? 1 : 0) || (b.n || 1) - (a.n || 1));
+        entries.forEach(e => push(e.q, e.u || "", "lern"));
+    }
+    _bonParseQty(bon || name).forEach(c => push(c.menge, c.einheit, "name"));
+    if (key) _bonHistSizes(key).forEach(c => push(c.menge, c.einheit, "hist", true));
+    (it.bonAlt || []).forEach(c => push(c.menge, c.einheit, "ki"));
+    (it._bonAi || []).forEach(c => push(c.menge, c.einheit, "ki"));
+    return list.slice(0, 8);
+}
+
+// Lernen: beim Uebernehmen einer Kassenzettel-Position wird der Bon-Name mit Inhalt (und Preis/Markt) beim Sortiments-Produkt gemerkt.
+function _bonUpsert(key, rec) {
+    _pxNormalize();
+    let t = _bonNorm(rec.d);
+    if (t.length < 3 || !key) return null;
+    let B = productExtras.bon, nums = _bonNums(t);
+    Object.keys(B).forEach(k => {   // gleicher Bon-Text bei anderem Produkt: Zuordnung wurde korrigiert -> dort entfernen
+        if (k === key) return;
+        B[k] = (B[k] || []).filter(e => !(e && e.t === t));
+        if (!B[k].length) delete B[k];
+    });
+    let list = B[key] || (B[key] = []);
+    let ex = list.find(e => e && (e.t === t || (_bonNums(e.t) === nums && Math.min(e.t.length, t.length) >= 8 && _bonSimilarity(e.t, t) >= BON_FUZZY_APPLY)));
+    let touched;
+    if (ex) {
+        ex.t = t; ex.d = rec.d; ex.q = rec.q; ex.u = rec.u || "";
+        if (rec.p !== null && rec.p !== undefined) ex.p = rec.p;
+        if (rec.s) ex.s = rec.s;
+        ex.n = (ex.n || 1) + 1; ex.at = Date.now();
+        touched = ex;
+    } else {
+        touched = { t: t, d: rec.d, q: rec.q, u: rec.u || "", p: (rec.p !== undefined ? rec.p : null), s: rec.s || "", n: 1, at: Date.now() };
+        list.push(touched);
+    }
+    while (list.length > BON_MAX_PER_PRODUCT) {
+        let worst = null;
+        list.forEach(e => { if (e !== touched && (!worst || (e.n || 1) < (worst.n || 1) || ((e.n || 1) === (worst.n || 1) && (e.at || 0) < (worst.at || 0)))) worst = e; });
+        list.splice(list.indexOf(worst), 1);
+    }
+    return ex ? "upd" : "new";
+}
+
+function _bonLearn(it) {
+    let bon = String(it.bon || "").trim();
+    if (!bon || it.isLeftover || !(it.bonCount > 0)) return null;
+    let m = findCatalogMatch(it.name);
+    if (!m) return null;
+    let menge = parseFloat(it.menge);
+    if (!(menge > 0)) return null;
+    let q = _bonRound(menge / it.bonCount);
+    if (!(q > 0)) return null;
+    let p = (typeof it.preis === "number" && it.preis > 0) ? _bonRound(it.preis / it.bonCount) : null;
+    return _bonUpsert(m.name.toLowerCase(), { d: bon.slice(0, 60), q: q, u: it.einheit || "", p: p, s: it.bonShop || "" });
+}
+
+// Explizit hinterlegte Packungsgroesse fuer die Preisrechnung: "Richtpreis 2,99 EUR fuer 1 Stueck" + Bon "Eier 10er" -> 10 Stueck je Packung.
+// Wie bei der Erkennung aus dem Einkaufsverlauf zaehlt nur ein Eintrag, dessen Preis ungefaehr zum Richtpreis passt.
+function _bonPackSize(key, price) {
+    _pxNormalize();
+    let list = productExtras.bon[key];
+    if (!list || !list.length || !(price > 0)) return 1;
+    let best = null;
+    list.forEach(e => {
+        if (!e || (e.u || "") !== "" || !(e.q > 1 && e.q <= 50) || !(e.p > 0)) return;
+        if (Math.abs(e.p - price) > price * 0.4) return;
+        if (!best || (e.n || 1) > (best.n || 1) || ((e.n || 1) === (best.n || 1) && (e.at || 0) > (best.at || 0))) best = e;
+    });
+    return best ? Math.round(best.q) : 1;
+}
+
+// ---- Add-items-Kachel: Punkt am Mengenfeld + Popup --------------------------------------------
+function _aiMengeDisp(v) {
+    if (v === "" || v === null || v === undefined || isNaN(Number(v))) return "";
+    return String(v).replace(".", ",");
+}
+
+function _bonDotHtml(it) {
+    let list = [];
+    try { list = _bonSuggestions(it); } catch (e) { list = []; }
+    let show = list.length > 0 || it.bonFilled;
+    return `<span id="aiQtyDot${it.id}" style="display:${show ? "block" : "none"}; position:absolute; top:-3px; right:-3px; width:8px; height:8px; border-radius:50%; background:${it.bonFilled ? "#7fe08a" : "#fff"}; box-shadow:0 0 0 1.5px rgba(0,0,0,0.25); pointer-events:none;"></span>`;
+}
+
+function _bonRefreshDot(id) {
+    let it = aiRecognizedItems.find(x => x.id === id);
+    let el = document.getElementById("aiQtyDot" + id);
+    if (!it || !el) return;
+    let list = [];
+    try { list = _bonSuggestions(it); } catch (e) { list = []; }
+    el.style.display = (list.length > 0 || it.bonFilled) ? "block" : "none";
+    el.style.background = it.bonFilled ? "#7fe08a" : "#fff";
+}
+
+function openAiQtyPopup(id) {
+    let it = aiRecognizedItems.find(x => x.id === id);
+    if (!it) return;
+    let n = parseFloat(it.menge);
+    window._pantryQtyPopupState = {
+        kind: "ai", aiId: id,
+        text: n > 0 ? String(n).replace(".", ",") : "",
+        fresh: true, unit: it.einheit || "", origUnit: it.einheit || "",
+        sug: _bonSuggestions(it), aiBusy: false
+    };
+    let bg = _qtyPopupAccent();
+    createModal(
+        `<div class="custom-modal-box" id="pantryQtyPopupBox" style="--modal-accent:${bg}; max-width:290px; padding:20px 18px;">
+            <div id="pantryQtyPopupContent">${_qtyPopupRenderHtml()}</div>
+        </div>`,
+        { id: "pantryQtyPopupOverlay", closeOnBackdrop: true, onClose: () => _qtyPopupClose(false) }
+    );
+}
+
+function _qtyPopupApplySug(i) {
+    let st = window._pantryQtyPopupState; if (!st || !st.sug || !st.sug[i]) return;
+    let s = st.sug[i];
+    st.text = String(s.menge).replace(".", ",");
+    st.unit = s.einheit || "";
+    st.fresh = false;
+    _qtyPopupRerender();
+}
+
+function _bonPopupSugHtml(st, cur, bg) {
+    if (!st || st.kind !== "ai") return "";
+    let canAi = false;
+    try { canAi = !!hasAnyAiKey(); } catch (e) { canAi = false; }
+    let list = st.sug || [];
+    if (!list.length && !canAi) return "";
+    let chips = list.map((s, i) => {
+        let active = Math.abs(cur - s.menge) < 1e-9 && (st.unit || "") === (s.einheit || "");
+        let tag = s.src === "lern" ? " \u2713" : (s.src === "ki" ? " KI" : "");
+        return `<button type="button" onclick="_qtyPopupApplySug(${i})" style="flex:0 0 auto; margin:0; padding:0 10px; height:30px; border:none; border-radius:9px; background:${active ? bg : "rgba(0,0,0,0.08)"}; color:${active ? "#fff" : "#333"}; font-size:12px; font-weight:bold; cursor:pointer;">${_bonFmtQty(s.menge, s.einheit)}<span style="font-size:9.5px; opacity:0.75;">${tag}</span></button>`;
+    }).join("");
+    let aiBtn = canAi ? `<button type="button" onclick="_bonAskAi()" ${st.aiBusy ? "disabled" : ""} style="margin:0; padding:0 8px; height:22px; border:none; border-radius:8px; background:rgba(0,0,0,0.08); color:#333; font-size:10.5px; font-weight:bold; cursor:pointer;">${st.aiBusy ? "KI denkt …" : "KI fragen"}</button>` : "";
+    let empty = chips ? "" : `<span style="font-size:11.5px; opacity:0.5;">noch keine Vorschläge</span>`;
+    return `<div style="margin-top:10px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;">
+            <span style="font-size:10.5px; font-weight:bold; letter-spacing:0.05em; text-transform:uppercase; opacity:0.5;">Vorschläge</span>${aiBtn}
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:5px;">${chips}${empty}</div>
+    </div>`;
+}
+
+async function _bonAskAi() {
+    let st = window._pantryQtyPopupState;
+    if (!st || st.kind !== "ai" || st.aiBusy) return;
+    let it = aiRecognizedItems.find(x => x.id === st.aiId);
+    let name = it ? String(it.name || "").trim() : "";
+    if (!it || !name) { showToast("Bitte zuerst einen Namen eingeben"); return; }
+    st.aiBusy = true;
+    _qtyPopupRerender();
+    try {
+        let per = (it.preis > 0) ? (it.bonCount > 0 ? it.preis / it.bonCount : it.preis) : null;
+        let prompt = `Du kennst das Sortiment deutscher Supermärkte. Nenne bis zu 4 im deutschen Handel übliche Packungsinhalte (Inhalt EINER Verkaufseinheit) für das Produkt "${name}"` + (it.bon ? ` (Kassenzettel-Zeile: "${it.bon}")` : "") + (per ? `. Eine Verkaufseinheit hat laut Kassenzettel ${per.toFixed(2)} Euro gekostet - nutze das als Plausibilitätshinweis` : "") + `. Sortiere nach Wahrscheinlichkeit, die wahrscheinlichste Größe zuerst. einheit ist genau eines von: "" (Stückzahl in der Packung, z. B. 10 Eier), "g", "kg", "ml", "l". Rate keine exotischen Größen. Antworte ausschließlich mit dem JSON-Feld "groessen".`;
+        let schema = { type: "object", properties: { groessen: { type: "array", items: { type: "object", properties: { menge: { type: "number" }, einheit: { type: "string" } }, required: ["menge", "einheit"] } } }, required: ["groessen"] };
+        let { text } = await aiGenerate("light", {
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: "application/json", responseSchema: schema, temperature: 0.2 }
+        });
+        let parsed;
+        try { parsed = JSON.parse(text); }
+        catch (e) { let mm = String(text).match(/\{[\s\S]*\}/); parsed = mm ? JSON.parse(mm[0]) : null; }
+        if (!parsed || !Array.isArray(parsed.groessen)) throw new Error("Antwort konnte nicht gelesen werden");
+        it._bonAi = parsed.groessen.map(g => ({ menge: Number(g && g.menge), einheit: normalizeEinheit(g && g.einheit) }))
+            .filter(g => g.menge > 0 && isFinite(g.menge)).slice(0, 4);
+        if (window._pantryQtyPopupState === st) st.sug = _bonSuggestions(it);
+        _bonRefreshDot(st.aiId);
+    } catch (e) {
+        showToast("KI-Vorschlag fehlgeschlagen: " + ((e && e.message) || "unbekannter Fehler"));
+    } finally {
+        st.aiBusy = false;
+        if (window._pantryQtyPopupState === st) _qtyPopupRerender();
+    }
+}
+
+function _aiQtyPopupClose(st, commit) {
+    if (commit) {
+        let it = aiRecognizedItems.find(x => x.id === st.aiId);
+        if (it) {
+            let n = _qtyPopupNum();
+            it.menge = n > 0 ? _bonRound(n) : "";
+            it.einheit = st.unit || "";
+            let el = document.getElementById("aiLeftoverMenge" + it.id);
+            if (el) el.value = _aiMengeDisp(it.menge);
+            let sw = window._aiUnitSw && window._aiUnitSw[it.id];
+            if (sw && typeof sw.setValue === "function") sw.setValue(it.einheit, true, true);
+            else { let hid = document.getElementById("aiLeftoverUnit" + it.id); if (hid) hid.value = it.einheit; }
+            it.bonFilled = false;   // jetzt von Hand bestaetigt
+            _bonRefreshDot(it.id);
+        }
+    }
+    let ov = document.getElementById("pantryQtyPopupOverlay");
+    if (ov) ov.remove();
+    window._pantryQtyPopupState = null;
+}
+
+// ---- Sortiment-Editor: Abschnitt "Kassenzettelnamen" ------------------------------------------
+function _bonJsKey(key) { return String(key).replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, "&quot;"); }
+
+function _pxBonListHtml(key) {
+    _pxNormalize();
+    let list = productExtras.bon[key] || [];
+    if (!list.length) return `<div style="padding:12px 14px; font-size:12.5px; font-weight:600; opacity:0.6; line-height:1.45;">Noch keiner hinterlegt. Beim Übernehmen eines Kassenzettels wird der Bon-Name hier automatisch gemerkt.</div>`;
+    return list.map((e, i) => {
+        let sub = [_bonFmtQty(e.q, e.u)];
+        if (e.p > 0) sub.push(_formatEuro(e.p));
+        if (e.s) sub.push(_escapeHtml(e.s));
+        if ((e.n || 1) > 1) sub.push((e.n) + "× bestätigt");
+        return `<div style="display:flex; align-items:center; gap:8px; padding:7px 14px; ${i ? "border-top:1px solid rgba(0,0,0,0.06);" : ""}">
+            <div style="flex:1; min-width:0;">
+                <div style="font-size:13px; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${_escapeHtml(e.d || e.t)}</div>
+                <div style="font-size:11px; font-weight:600; opacity:0.55;">${sub.join(" · ")}</div>
+            </div>
+            <button type="button" onclick="pxBonDelete('${_bonJsKey(key)}', ${i})" aria-label="Kassenzettelname löschen" style="border:none; background:rgba(0,0,0,0.07); border-radius:10px; width:32px; height:32px; font-size:16px; font-weight:800; color:#8a4b4b; cursor:pointer;">&times;</button>
+        </div>`;
+    }).join("");
+}
+
+function _pxBonSectionHtml(key) {
+    let opt = (v, l) => `<option value="${v}">${l}</option>`;
+    return `
+        <div class="lt-sec">Kassenzettelnamen</div>
+        <div class="lt-card" id="px-bon-box" style="padding:0;">${_pxBonListHtml(key)}</div>
+        <div class="lt-card"><div style="padding:12px 14px 12px;">
+            <div style="font-size:12px; font-weight:700; opacity:0.6; line-height:1.4; margin-bottom:8px;">So steht das Produkt auf dem Bon, mit Inhalt je gekaufter Einheit (z. B. "BIO EIER 10ER" = 10 Stück). Mehrere Namen sind möglich, z. B. je Supermarkt mit eigenem Preis.</div>
+            <input id="pxb-name" type="text" placeholder="Name wie auf dem Bon" class="px-in" style="width:100%; text-align:left; margin-bottom:8px;">
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                <input id="pxb-qty" type="number" min="0" step="any" inputmode="decimal" placeholder="Inhalt" class="px-in" style="width:76px;">
+                <select id="pxb-unit" class="px-in" style="width:84px; text-align:left;">${opt("", "Stück")}${opt("g", "g")}${opt("kg", "kg")}${opt("ml", "ml")}${opt("l", "l")}</select>
+                <input id="pxb-price" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Preis €" class="px-in" style="width:76px;">
+            </div>
+            <input id="pxb-shop" type="text" placeholder="Markt (optional), z. B. Lidl" class="px-in" style="width:100%; text-align:left; margin-bottom:10px;">
+            <button type="button" onclick="pxBonAdd('${_bonJsKey(key)}')" style="border:none; border-radius:12px; padding:9px 16px; background:var(--lt-accent); color:#fff; font-size:13px; font-weight:800; cursor:pointer; font-family:inherit;">Hinzufügen</button>
+        </div></div>`;
+}
+
+function pxBonAdd(key) {
+    _pxNormalize();
+    let val = id => { let el = document.getElementById(id); return el ? String(el.value || "").trim() : ""; };
+    let d = val("pxb-name");
+    let q = parseFloat(val("pxb-qty").replace(",", "."));
+    let u = val("pxb-unit");
+    let p = parseFloat(val("pxb-price").replace(",", "."));
+    if (_bonNorm(d).length < 3) { showToast("Bitte den Namen wie auf dem Bon eintragen"); return; }
+    if (!(q > 0)) { showToast("Bitte den Inhalt eintragen, z. B. 10 Stück"); return; }
+    _bonUpsert(key, { d: d.slice(0, 60), q: _bonRound(q), u: u, p: p > 0 ? _bonRound(p) : null, s: val("pxb-shop") });
+    saveCustomData();
+    let box = document.getElementById("px-bon-box");
+    if (box) box.innerHTML = _pxBonListHtml(key);
+    ["pxb-name", "pxb-qty", "pxb-price", "pxb-shop"].forEach(id => { let el = document.getElementById(id); if (el) el.value = ""; });
+}
+
+function pxBonDelete(key, idx) {
+    _pxNormalize();
+    let list = productExtras.bon[key];
+    if (!list || !list[idx]) return;
+    list.splice(idx, 1);
+    if (!list.length) delete productExtras.bon[key];
+    saveCustomData();
+    let box = document.getElementById("px-bon-box");
+    if (box) box.innerHTML = _pxBonListHtml(key);
+}
+
+function _bonCleanAlt(v) {
+    if (!Array.isArray(v)) return [];
+    return v.map(g => ({ menge: Number(g && g.menge), einheit: normalizeEinheit(g && g.einheit) }))
+        .filter(g => g.menge > 0 && isFinite(g.menge) && g.menge < 10000).slice(0, 3);
 }
 
 function _pxSyncPriceHistory() {
@@ -6748,6 +7252,7 @@ function _pxSortimentPrice(key) {
     // "2,99 EUR fuer 1 Stueck": war es laut Einkaeufen eine Packung mit mehreren Stueck, durch deren Anzahl teilen
     let pack = (b.type === "count" && q <= 1) ? _pxPackSize(key, price) : 1;
     if (pack === 1 && b.type === "count" && q <= 1) pack = _pxNamePackSize(key);
+    if (b.type === "count" && q <= 1) { let bp = _bonPackSize(key, price); if (bp > 1) pack = bp; }   // explizit hinterlegter Kassenzettelname hat Vorrang
     let always = p.use === "always" ? true : (p.use === "fallback" ? false : (priceMedianFirst ? false : p.always !== false));
     return { price: price, ppb: price / (b.base * pack), type: b.type, always: always, pack: pack };
 }
@@ -6857,7 +7362,7 @@ function _recipeHasNutrition(r) { return !!getRecipeNutritionInfo(r); }
 
 function _pxDeleteProduct(key) {
     _pxNormalize();
-    ["price", "nutrition", "weights", "hist", "defaults"].forEach(k => { delete productExtras[k][key]; });
+    ["price", "nutrition", "weights", "hist", "defaults", "bon"].forEach(k => { if (productExtras[k]) delete productExtras[k][key]; });
     if (productExtras.image[key]) { deletePhoto(productExtras.image[key]); delete productExtras.image[key]; }
     _nutCacheClear();
 }
@@ -13792,6 +14297,11 @@ function _qtyPopupPresets(unit) {
 }
 function _qtyPopupAccent() {
     let st = window._pantryQtyPopupState;
+    if (st && st.kind === "ai") {
+        let ai = aiRecognizedItems.find(x => x.id === st.aiId);
+        let am = ai ? findCatalogMatch(ai.name) : null;
+        return am ? getCategoryColor(am.cat) : "#86689a";
+    }
     let item = st ? pantry.find(p => p.uid === st.uid) : null;
     if (!item) return getActionBarColor();
     let m = findCatalogMatch(item.name);
@@ -13855,6 +14365,7 @@ function _qtyPopupStep(dir) {
 }
 function _qtyPopupClose(commit) {
     let st = window._pantryQtyPopupState;
+    if (st && st.kind === "ai") { _aiQtyPopupClose(st, commit); return; }
     let needRefresh = false;
     if (st && commit) {
         let idx = pantry.findIndex(p => p.uid === st.uid);
@@ -13897,6 +14408,7 @@ function _qtyPopupRenderHtml() {
     };
     let digitBtn = (label, onclick) => `<button type="button" onclick="${onclick}" style="margin:0; height:44px; border:none; border-radius:11px; background:${bg}; color:#fff; font-size:17px; font-weight:bold; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.15);">${label}</button>`;
     let name = item ? escapeHtml(item.name) : "";
+    if (st.kind === "ai") { let _ai = aiRecognizedItems.find(x => x.id === st.aiId); name = _ai ? escapeHtml(_ai.name || "") : ""; }
     return `
         <div style="font-size:12px; font-weight:bold; letter-spacing:0.04em; text-transform:uppercase; opacity:0.6; text-align:center; margin-bottom:4px;">Menge</div>
         <div style="font-size:11px; opacity:0.5; text-align:center; margin-bottom:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${name}</div>
@@ -13906,6 +14418,7 @@ function _qtyPopupRenderHtml() {
             ${stepBtn(1, "data:image/png;base64,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", 14)}
         </div>
         <div style="display:flex; gap:5px; margin-top:12px;">${UNIT_SWIPER_OPTIONS.map(unitBtn).join("")}</div>
+        ${_bonPopupSugHtml(st, cur, bg)}
         <div style="display:flex; flex-wrap:nowrap; gap:5px; margin-top:8px;">${pre.chips.map(chip).join("")}</div>
         <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:7px; margin-top:14px;">
             ${[1,2,3,4,5,6,7,8,9].map(n => digitBtn(n, `_qtyPopupDigit(${n})`)).join("")}
@@ -16972,7 +17485,7 @@ function parseGermanReceiptText(rawText) {
         let name = m[1].trim().replace(/^[-*.\s]+/, "").trim();
         if (!name || name.length < 2) continue;
         let preis = parseFloat(m[2].replace(",", "."));
-        items.push({ name: titleCaseGermanReceiptName(name), menge: 1, einheit: "", mhd: "", preis: isNaN(preis) ? null : preis });
+        items.push({ name: titleCaseGermanReceiptName(name), bon: name, menge: 1, einheit: "", mhd: "", preis: isNaN(preis) ? null : preis });
     }
     return items;
 }
@@ -17111,7 +17624,7 @@ async function recognizeFoodItemsFromReceipt(receiptPhotoBase64DataUrl, onProgre
     } else {
         let prompt = `Du bekommst das Foto (oder einen Screenshot) eines Kassenzettels/Kassenbons von einem Lebensmittel-Einkauf.
 Lies JEDE Position auf dem Bon, die ein Lebensmittel oder Getränk ist (Pfand, Rabatte, Gutscheine, Nicht-Lebensmittel wie Drogerieartikel IGNORIEREN).
-Zähle die Stückzahl bei zählbaren Dingen (z.B. Eier, Brote, Packungen, Dosen). Steht auf dem Bon eine Gewichtsangabe (z.B. "0,485 kg"), nutze diese als Menge in Gramm/Kilogramm statt der Stückzahl. Ist auf dem Bon nur ein einzelner Artikel ohne Mengenangabe gelistet, nimm Menge 1 an.
+Zähle bei zählbaren Dingen die gekauften Verkaufseinheiten laut Bon (z.B. Packungen, Dosen, Flaschen, Brote): "2 x" oder zwei gleiche Zeilen = 2. 'menge' ist NIE der Inhalt einer Packung: eine Packung "Eier 10er" ist menge 1 (nicht 10), eine Flasche "Milch 1 l" ist menge 1 mit einheit ''. Steht auf dem Bon eine Gewichtsangabe (z.B. "0,485 kg"), nutze diese als Menge in Gramm/Kilogramm statt der Stückzahl. Ist auf dem Bon nur ein einzelner Artikel ohne Mengenangabe gelistet, nimm Menge 1 an.
 MHD steht auf einem Kassenzettel normalerweise NICHT drauf - gib dafür immer '' (leerer String) zurück, rate NICHT.
 Lies außerdem für jede Position den bezahlten Gesamtpreis (die Summe für die gesamte Menge dieser Position, nicht den Einzelpreis pro Stück/kg) und gib ihn im Feld 'preis' als Zahl mit Punkt als Dezimaltrennzeichen zurück (z.B. 2.58). Ist kein Preis lesbar, gib null zurück - rate NICHT.
 
@@ -17119,8 +17632,9 @@ Folgende Produktnamen gibt es bereits im Sortiment dieser App: ${sortimentListe}
 Prüfe für JEDE erkannte Position, ob es sich dabei um eine konkrete Art, Marke oder Variante EINES dieser Sortiments-Einträge handelt (Subkategorie-Beziehung, "ist ein/eine"). Beispiel: "Gouda-Scheibenkäse" ist eine Art von "Schnittkäse" -> gib in diesem Fall "Schnittkäse" zurück (nicht "Gouda" und nicht das allgemeine Wort "Käse"), damit die App das Produkt korrekt zuordnen kann.
 Gib NIEMALS einen Sortiments-Namen zurück, nur weil eine Position optisch/name ähnlich klingt oder zur gleichen Oberkategorie gehört, wenn es inhaltlich KEINE Unterart davon ist. Im Zweifel gilt: nur zuordnen bei echter Ist-eine-Art-von-Beziehung, nicht bei bloßer Ähnlichkeit. Findet sich keine passende Zuordnung, gib stattdessen einen sinnvollen, kurzen deutschen Produktnamen zurück, so gut er sich aus der (oft abgekürzten) Bon-Zeile ableiten lässt.
 WICHTIG bei mehreren gleichen Positionen (z.B. 2x dieselbe Zeile): Erzeuge dafür NUR EINEN einzigen Eintrag im Ergebnis-Array mit der Gesamt-Stückzahl in 'menge' - NIEMALS mehrere separate Einträge für dasselbe Produkt.
+Gib zusätzlich pro Position an: 'bon' = die Bon-Zeile exakt so, wie sie gedruckt steht (Abkürzungen und Schreibweise unverändert, ohne Preis, ohne Mengen-Präfix wie '2 x'); 'markt' = Name des Geschäfts aus dem Bon-Kopf (z.B. 'Lidl' oder 'REWE'), bei allen Positionen gleich, sonst ''; 'moeglich' = Liste mit bis zu 3 im deutschen Handel üblichen Packungsinhalten PRO Verkaufseinheit als Objekte {'menge': Zahl, 'einheit': ''|'g'|'kg'|'ml'|'l'} (einheit '' = Stückzahl in der Packung), nach Wahrscheinlichkeit sortiert - aber NUR, wenn der Inhalt aus der Bon-Zeile selbst NICHT hervorgeht und die Packungsgröße bei diesem Produkt üblicherweise variiert (z.B. 'BIO EIER' -> 10 und 6 Stück). Geht der Inhalt aus der Zeile hervor (z.B. 'EIER 10ER', 'NUDELN 500G'), bei Gewichtspositionen (Preis pro kg) und bei Unsicherheit ist 'moeglich' immer []. Rate keine exotischen Größen.
 Antworte NUR mit einem JSON-Array, keine Erklärung, kein Markdown-Codeblock.
-Format: [{'name': 'Tomate', 'menge': 5, 'einheit': '', 'mhd': '', 'preis': 2.49}, {'name': 'Joghurt', 'menge': 2, 'einheit': '', 'mhd': '', 'preis': 1.18}, {'name': 'Reis', 'menge': 500, 'einheit': 'g', 'mhd': '', 'preis': 3.29}] - aber mit korrekten JSON-Anführungszeichen (doppelte Anführungszeichen), nicht mit einfachen wie hier zur Erklärung gezeigt.
+Format: [{'name': 'Tomate', 'menge': 5, 'einheit': '', 'mhd': '', 'preis': 2.49, 'bon': 'TOMATEN RISPE', 'markt': 'Lidl', 'moeglich': []}, {'name': 'Ei', 'menge': 1, 'einheit': '', 'mhd': '', 'preis': 2.99, 'bon': 'BIO EIER', 'markt': 'Lidl', 'moeglich': [{'menge': 10, 'einheit': ''}, {'menge': 6, 'einheit': ''}]}, {'name': 'Reis', 'menge': 1, 'einheit': '', 'mhd': '', 'preis': 3.29, 'bon': 'LANGKORNREIS 500G', 'markt': 'Lidl', 'moeglich': []}] - aber mit korrekten JSON-Anführungszeichen (doppelte Anführungszeichen), nicht mit einfachen wie hier zur Erklärung gezeigt.
 Nutze kurze, deutsche Singular-Namen ('Tomate' statt 'Tomaten').
 einheit ist AUSSCHLIESSLICH eines von genau diesen fünf Werten - sonst nichts: leerer String '' (für reine Stückzahl), 'g', 'kg', 'ml', 'l'.
 Antworte NUR mit dem JSON-Array selbst - ohne Markdown-Codeblock (dreifache Backticks), ohne Fließtext davor oder danach.`;
@@ -17145,8 +17659,17 @@ Antworte NUR mit dem JSON-Array selbst - ohne Markdown-Codeblock (dreifache Back
             einheit: normalizeEinheit(it.einheit),
             mhd: normalizeMhdToPill(it.mhd),
             preis: parseAiPrice(it.preis),
-            box: null
+            box: null,
+            bon: String(it.bon || "").trim().slice(0, 80),
+            bonShop: String(it.markt || "").trim().slice(0, 40),
+            bonAlt: _bonCleanAlt(it.moeglich)
         }));
+
+    // Kassenzettelnamen: gemerkte Namen/Mengen anwenden, sonst Menge aus dem Bon-Text, KI-Vorschlaege fuers Mengen-Popup
+    let _bonShopName = "";
+    mapped.forEach(it => { if (!_bonShopName && it.bonShop) _bonShopName = it.bonShop; });
+    mapped.forEach(it => { if (!it.bonShop) it.bonShop = _bonShopName; });
+    _bonEnrichItems(mapped, _bonShopName);
 
     return mergeDuplicateAiItems(mapped);
 }
@@ -17165,10 +17688,11 @@ function mergeDuplicateAiItems(items) {
     let merged = [];
     let byKey = new Map();
     for (let it of items) {
-        let key = it.name.trim().toLowerCase() + "|" + it.einheit;
+        let key = it.name.trim().toLowerCase() + "|" + it.einheit + ((it.bonFilled && it.bon) ? "|" + _bonNorm(it.bon) : "");   // verschiedene Bon-Namen mit bekanntem Inhalt nicht vermischen
         let existing = byKey.get(key);
         if (existing) {
             existing.menge += it.menge;
+            if (it.bonCount > 0) existing.bonCount = (existing.bonCount || 0) + it.bonCount;
             if (!existing.mhd && it.mhd) existing.mhd = it.mhd;
             if (it.preis !== null && it.preis !== undefined) {
                 existing.preis = (existing.preis || 0) + it.preis;
@@ -22410,7 +22934,10 @@ function renderAiRecognitionReview() {
                     <div id="aiSuggestPanel${it.id}" style="display:none; text-align:left; background:rgba(255,255,255,0.92); color:#222; border-radius:12px; padding:9px 10px 4px; box-shadow:0 1px 5px rgba(0,0,0,0.15);"></div>
                     <div style="display:flex; align-items:center; gap:3px;">
                         <button type="button" onclick="adjustAiMenge(${it.id}, -1)" class="ai-compact-step" style="flex:0 0 24px;"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPUAAABVCAYAAACRraKLAAABfGlDQ1BJQ0MgUHJvZmlsZQAAeJx1kc8rw2Ecx182TDNRFAeHJZw22dTi4rDFKBy2KcNl+9oPtR/fvt9Jy1W5rihx8evAX8BVOStFpOQsR+LC+vp8TU2yz9Pn+bye9/N8Pj3P5wFLJKNk9fpByOYKWijod85F5522ZxrpoBM7npiiq9Ph8Qg17f2WOjNeu81atc/9a81LCV2BuibhUUXVCsITwlOrBdXkLeEOJR1bEj4RdmlyQeEbU49X+MnkVIU/TdYioQBY2oSdqV8c/8VKWssKy8vpzWZWlJ/7mC9xJHKzYYk94t3ohAjix8kkYwTw4WFEZh9uvAzIihr5g9/5M+QlV5FZpYjGMinSFHCJuiLVExKToidkZCia/f/bVz055K1Ud/ih4dEwXvvAtgnlkmF8HBhG+RCsD3Ceq+bn92H4TfRSVevdg9Z1OL2oavFtONuArns1psW+Jau4JZmEl2NoiUL7FdgXKj372efoDiJr8lWXsLML/XK+dfELiotn9kWitK8AAANMSURBVHja7dxLa1wFHIbx5z0t1gvGRQqaQGso6E5JN/0KAbXpTrEb3StZ1G78CKk3KHZvF61LL61Fv0I3Ad0pikkhsWI2gaIFk7+LOaExSdNOtO2cw/OD2QxzgXd4OIdh5oR9qqop4CRwHJgEJtrb40gaxl/ASntbBhaAK0l+3c+LZciQnwPeAU4BL/lZSA/UD8BXwIUkv/2vUVfVM8BZ4AzwpFtLD9Ut4BPggyRr/znqqjoNnAfG3VZ6pFaBuSSX93pQs0fMB6rqHHDJoKWRMA5cqqr5qjow1JG6qsaAz4FX3FEaSdeAN3c7Hc8uQR8ErgIz7iaNtO+AV5Os3+v0e96gpU6YaXu9+5G6qt4CPnMrqVPeTnJxR9RVdRj4BXjajaROWQOOJVndfvr9vkFLnTTW9nvnSF1VR4GfgMfcR+qk28CLSZY2j9TvGbTUaYfajklVBVgEjriL1GlLwFSqaprBv0Ikdd90A8y6g9Qbsw1wwh2k3jjRMLiwgaR+mGgYXLVEUj9MpqrW2eMvmJI6ZaMxaKlXGoOW+la1E0hGLcmoJRm1JKOWZNSSUUsyaklGLcmoJRm1ZNSSjFqSUUsyaklGLRm1JKOWZNSSjFqSUUtGLcmoJRm1JKOWZNSSUUsyaklGLcmoJRm1ZNSSjFqSUUsyaklGLRm1JKOWZNSSjFqSUUtGLcmoJY1C1BvOIPXGRgP87g5Sb9xsgGV3kHpjuQFW3EHqjZUGuO4OUm9cT1VNAwtuIfXCdKoqwCJwxD2kTlsCppokBXzhHlLnfZmkAlBVR4EfgUPuInXSbeCFJDcagCRLwAV3kTrr0yQ3ALJ5T1UdBn4GxtxH6pQ14FiSVdjy2+8kfwBz7iN1ztxm0P+Kug37IvCxG0md8VHb7Z2Otz+iqg4CV4EZ95JG2rfAa0nWt96546+XSf4GXgeuuZk0sr4B3tge9K5Rt2GvAbPAObeTRs48cKrtdGe/93p2VZ0GzgPjbik9UqsMvhS7vNeDcj+vVFVjwFngDPCU20oP1S0GX2B/eLej89BRb4n7WeDd9tT8ZbeWHqjvga8Z/LDk5v0+Kft9t6p6HjgJHAcmgYn29oSfhTSUPxlc12CFwUVLFoArSRb382L/ALpfsparNmysAAAAAElFTkSuQmCC" style="width:11px; height:5px; object-fit:contain; filter:brightness(0) invert(1);"></button>
-                        <input id="aiLeftoverMenge${it.id}" type="number" min="0" step="any" placeholder="–" value="${it.menge}" oninput="updateAiItem(${it.id}, 'menge', this.value)" style="flex:1 1 auto; min-width:44px; max-width:74px; height:34px; text-align:center; font-size:12px; ${fieldStyle} padding:4px 3px;">
+                        <div style="position:relative; flex:1 1 auto; min-width:44px; max-width:74px; display:flex;">
+                            <input id="aiLeftoverMenge${it.id}" type="text" readonly inputmode="none" placeholder="–" value="${_aiMengeDisp(it.menge)}" onclick="openAiQtyPopup(${it.id})" style="width:100%; min-width:0; height:34px; text-align:center; font-size:12px; cursor:pointer; ${fieldStyle} padding:4px 3px;">
+                            ${_bonDotHtml(it)}
+                        </div>
                         <button type="button" onclick="adjustAiMenge(${it.id}, 1)" class="ai-compact-step" style="flex:0 0 24px;"><img src="data:image/png;base64,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" style="width:11px; height:11px; object-fit:contain; filter:brightness(0) invert(1);"></button>
                         <div style="margin-left:auto; flex-shrink:0;">${unitSwiperHTML("aiLeftoverUnit" + it.id, it.einheit, "#86689a", `updateAiItem(${it.id}, 'einheit', this.value)`, "on-tile compact-xs", "--sw-width:96px;--sw-height:38px;--chip-w:30px;--chip-h:28px;--sw-pad:26px;--sw-mask:14px;--chip-fs:11px;")}</div>
                     </div>
@@ -22446,7 +22973,7 @@ function renderAiRecognitionReview() {
     `;
 
     aiRecognizedItems.forEach(it => {
-        initUnitSwiper("aiLeftoverUnit" + it.id);
+        (window._aiUnitSw = window._aiUnitSw || {})[it.id] = initUnitSwiper("aiLeftoverUnit" + it.id);
         _bindAiMhdSwipe(it.id);
         _aiUpdateNameHint(it.id);
     });
@@ -22536,6 +23063,7 @@ function updateAiItem(id, field, value) {
         it._est = null;
         _aiRefreshHaltCard(id);
         _aiNameHintSchedule(id);
+        try { _bonRefreshDot(id); } catch (e) {}
     }
 }
 
@@ -22555,7 +23083,7 @@ function _aiUpdateNameHint(id) {
         try { match = findCatalogMatch(name); } catch (e) { match = null; }
         try { res = _ingredientNameSuggestions(name); } catch (e) { res = { pantry: [], catalog: [] }; }
     }
-    let n = res.pantry.length + res.catalog.length;
+    let n = res.pantry.length + res.catalog.length + ((it.bonCand && it.bonCand.length) || 0);
     if (!name) { el.style.display = "none"; el.textContent = ""; }
     else {
         el.style.display = "none"; el.textContent = "";
@@ -22601,6 +23129,7 @@ function _renderAiNameSuggestions(id) {
     let html = "";
     let _m = null; try { _m = findCatalogMatch(it.name || ""); } catch (e) {}
     if (_m) html += `<div style="font-size:11.5px; font-weight:bold; color:#3e613e; margin:0 0 8px; font-family:${FF};">\u2713 im Sortiment: ${_escapeHtml(_m.name)}</div>`;
+    if (it.bonCand && it.bonCand.length) html += cap("Von deinem Kassenzettelnamen", "#3e613e") + `<div style="margin-bottom:6px;">${it.bonCand.map(c => chip({ name: c.name }, true)).join("")}</div>`;
     if (res.pantry.length) html += cap("In deiner Speisekammer", "#3e613e") + `<div style="margin-bottom:6px;">${res.pantry.map(x => chip(x, true)).join("")}</div>`;
     if (res.catalog.length) html += cap("Im Sortiment", color) + `<div>${res.catalog.map(x => chip(x, false)).join("")}</div>`;
     if (!html) html = `<div style="font-size:12px; opacity:0.55; text-align:center; padding:4px 0 10px; font-family:${FF};">Keine ähnlichen Produkte gefunden</div>`;
@@ -22767,7 +23296,9 @@ function adjustAiMenge(id, delta) {
     v = Math.max(0, Math.round((v + delta * step) * 100) / 100);
     it.menge = v;
     let el = document.getElementById("aiLeftoverMenge" + id);
-    if (el) el.value = v;
+    if (el) el.value = _aiMengeDisp(v);
+    it.bonFilled = false;
+    try { _bonRefreshDot(id); } catch (e) {}
 }
 
 function aiMhdComboHtml(it) {
@@ -23320,12 +23851,14 @@ function confirmAiRecognition() {
         return;
     }
 
+    let learnedBon = 0;
     toAdd.forEach(it => {
         let entry = _pantryEntryFromAiItem(it);
         try {
             let lm = it.isLeftover ? null : findCatalogMatch(it.name);
             if (lm && (it.storage || it.noExpiry)) _pxLearnDefault(lm.name.toLowerCase(), it.storage, !!it.noExpiry);
         } catch (e) {}
+        try { if (_bonLearn(it) === "new") learnedBon++; } catch (e) { console.warn("Kassenzettelname konnte nicht gemerkt werden:", e); }
         recordMoneySpent(entry.preis);
         pantry.push(entry);
     });
@@ -23345,7 +23878,7 @@ function confirmAiRecognition() {
 
     saveCustomData();
     if (cameFromShopping) openShoppingList(); else renderHome();
-    showToast(`${toAdd.length} Produkt(e) hinzugefügt` + (mergedCount ? ` · ${mergedCount} zusammengefügt` : ""));
+    showToast(`${toAdd.length} Produkt(e) hinzugefügt` + (mergedCount ? ` · ${mergedCount} zusammengefügt` : "") + (learnedBon ? ` · ${learnedBon} Kassenzettelname${learnedBon > 1 ? "n" : ""} gemerkt` : ""));
 }
 
 const SUBCATEGORIES = ["milch", "fleisch"];
@@ -24110,6 +24643,7 @@ function _pxEditorPriceHtml(key, name, color) {
             </div>
         </div></div>
         ${_pxPieceSectionHtml(key, "2")}
+        ${_pxBonSectionHtml(key)}
         <div class="lt-sec">Einkaufsverlauf</div>
         <div class="lt-card" id="px-hist-box" style="padding:0;">${_pxPriceHistHtml(key)}</div>
         <div style="font-size:11px; font-weight:600; opacity:0.5; margin:2px 8px 0; line-height:1.45;">Es werden die letzten ${PX_HIST_MAX} Preise gemerkt; für den Richtwert zählen die letzten ${PX_MEDIAN_N}. Ein Lesefehler vom Kassenzettel lässt sich hier mit × löschen.</div>`;
