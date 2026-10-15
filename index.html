@@ -12718,14 +12718,15 @@ function toggleShoppingLabelsSetting(checked) {
     saveCustomData();
 }
 
-// ===== Pantry-Zoom (Galerie-Stil) =====
-// Pinch (bzw. Strg + Mausrad am Rechner) wechselt stufenweise die Spaltenzahl (1 bis ca. 4 Kacheln pro Reihe am Handy).
-// Pro Stufe gibt es genau EIN Layout (CSS "zoom" auf dem Raster). Die sichtbaren Kacheln gleiten dabei per Web-Animations-API
-// (nur transform, GPU) von ihrer alten an die neue Position (FLIP). Waehrend der Geste gibt es keine Layouts, keine Scroll-Korrekturen
-// pro Frame und keine riesigen GPU-Ebenen - dadurch laeuft es auch auf dem iPhone fluessig, ohne Springen oder Einfrieren.
+// ===== Pantry-Zoom (wie die Fotos-Galerie) =====
+// Stufenloses Zwei-Finger-Pinch: die Kacheln folgen live den Fingern. Technik: Vor der Geste werden die ECHTEN Layouts der Zoomstufen
+// (1, 2, 3 ... Kacheln pro Reihe) einmal gemessen. Waehrend der Geste wird nur zwischen diesen gemessenen Positionen interpoliert und
+// ausschliesslich der sichtbare Teil der Kacheln per transform bewegt - kein Layout, kein Scrollen und keine riesige GPU-Ebene pro Frame.
+// Beim Loslassen gleitet der Zoom weich auf die naechste Stufe, danach wird einmal der echte Zoom gesetzt (Positionen stimmen exakt ueberein).
+// Strg + Mausrad am Rechner wechselt stufenweise (siehe _pzStep).
 const PANTRY_ZOOM_MAX = 1.7;
 // Am Handy weiter rauszoomen koennen (>= 4 Kacheln pro Reihe), am Rechner bleibt es bei 0.5
-function pzMin() { return (window.innerWidth || 1024) <= 600 ? 0.45 : 0.5; }
+function pzMin() { return (window.innerWidth || 1024) <= 600 ? 0.4 : 0.5; }
 function applyPantryZoom() {
     let el = document.getElementById("pantry");
     if (!el) return;
@@ -12887,50 +12888,177 @@ function _pzAnchorAt(x, y) {
     let r = tile.getBoundingClientRect();
     return { el: tile, y: r.top, fy: r.height > 0 ? Math.max(0, Math.min(1, (y - r.top) / r.height)) : 0 };
 }
+// ----- Stufenloser Pinch (Engine) -----
+let _pz = null;   // aktive Geste
+function _pzMeasure(pe, tiles, zoomStr) {
+    pe.style.zoom = zoomStr;
+    tiles[0].getBoundingClientRect();                                // erzwingt das Layout
+    let sy = window.scrollY || window.pageYOffset || 0;              // evtl. vom Browser begrenzt -> Seitenkoordinaten verwenden
+    let r = new Array(tiles.length);
+    for (let i = 0; i < tiles.length; i++) { let b = tiles[i].getBoundingClientRect(); r[i] = { x: b.left, y: b.top + sy, w: b.width, h: b.height }; }
+    return { r: r, H: document.documentElement.scrollHeight };
+}
+function _pzBegin(mx, my) {
+    let pe = document.getElementById("pantry");
+    if (!pe) return null;
+    let tiles = Array.prototype.slice.call(pe.querySelectorAll(".product"));
+    if (!tiles.length) return null;
+    _pzFlips.forEach(an => { try { an.cancel(); } catch (e) {} }); _pzFlips = [];
+    let z0 = pantryZoom, S0 = window.scrollY || window.pageYOffset || 0, prevZoom = pe.style.zoom;
+    let list = null; try { list = _pzSnapList(); } catch (e) { list = null; }
+    let zs = (list || []).map(x => x.z).filter(z => z >= pzMin() - 0.001 && z <= PANTRY_ZOOM_MAX + 0.001 && Math.abs(Math.log(z / z0)) > 0.03);
+    let entries = zs.map(z => ({ z: z, base: false }));
+    entries.push({ z: z0, base: true });
+    entries.sort((p, q) => p.z - q.z);
+    if (entries.length < 2) return null;
+    // Echte Layouts jeder Stufe messen (ohne zwischendurch zu zeichnen) und danach den Ausgangszustand exakt wiederherstellen
+    entries.forEach(E => { let m = _pzMeasure(pe, tiles, E.base ? prevZoom : String(E.z)); E.r = m.r; E.H = m.H; });
+    pe.style.zoom = prevZoom;
+    window.scrollTo(0, S0);
+    let A = entries.find(E => E.base).r;
+    // Ankerkachel unter dem Fingermittelpunkt
+    let idx = -1, el = document.elementFromPoint(mx, my), tl = el && el.closest ? el.closest("#pantry .product") : null;
+    if (tl) idx = tiles.indexOf(tl);
+    if (idx < 0) { let bd = Infinity; A.forEach((r, i) => { let d = Math.hypot(r.x + r.w / 2 - mx, r.y + r.h / 2 - (my + S0)); if (d < bd) { bd = d; idx = i; } }); }
+    let a = A[idx];
+    let n = tiles.length, vh = window.innerHeight || 800, vis = new Uint8Array(n);
+    for (let i = 0; i < n; i++) { let y = A[i].y - S0; vis[i] = (y + A[i].h > 0 && y < vh) ? 1 : 0; }
+    return { pe: pe, tiles: tiles, entries: entries, A: A, S0: S0, z0: z0, zc: z0, my: my, prevZoom: prevZoom, Snew: S0,
+        anchor: { i: idx, rx: (mx - a.x) / (a.w || 1), ry: (my + S0 - a.y) / (a.h || 1) },
+        vis: vis, touched: new Uint8Array(n), prev: new Array(n), last: new Float32Array(n * 4), raf: 0, releasing: false, target: null };
+}
+// Zeichnet den Zwischenzustand bei Zoom g.zc: Positionen = Mischung aus den beiden benachbarten, gemessenen Layouts
+function _pzRender(g) {
+    let ent = g.entries, vh = window.innerHeight || 800;
+    let zc = Math.max(ent[0].z, Math.min(ent[ent.length - 1].z, g.zc));
+    let k = 0; while (k < ent.length - 2 && zc > ent[k + 1].z) k++;
+    let E0 = ent[k], E1 = ent[k + 1];
+    let t = Math.log(zc / E0.z) / Math.log(E1.z / E0.z);
+    t = t < 0 ? 0 : (t > 1 ? 1 : t);
+    let ia = g.anchor.i, a0 = E0.r[ia], a1 = E1.r[ia];
+    let ay = (a0.y + (a1.y - a0.y) * t) + g.anchor.ry * (a0.h + (a1.h - a0.h) * t);        // Seitenkoordinate des Fingerpunkts
+    let Hmax = Math.max(0, E0.H + (E1.H - E0.H) * t - vh);
+    let Sn = Math.max(0, Math.min(Hmax, ay - g.my));                                          // virtuelle Scrollposition (Punkt bleibt unter den Fingern)
+    g.Snew = Sn;
+    let n = g.tiles.length, A = g.A, vis = g.vis, S0 = g.S0;
+    for (let i = 0; i < n; i++) {
+        let r0 = E0.r[i], r1 = E1.r[i];
+        let y = r0.y + (r1.y - r0.y) * t - Sn, h = r0.h + (r1.h - r0.h) * t;
+        if (!(y + h > -300 && y < vh + 300) && !vis[i]) continue;                             // weit ausserhalb: nicht anfassen
+        let ai = A[i]; if (!(ai.w > 0 && ai.h > 0)) continue;
+        let x = r0.x + (r1.x - r0.x) * t, w = r0.w + (r1.w - r0.w) * t;
+        let el = g.tiles[i], st = el.style;
+        if (!g.touched[i]) {
+            g.touched[i] = 1;
+            g.prev[i] = [st.transform, st.transformOrigin, st.transition, st.willChange];
+            st.transition = "none"; st.transformOrigin = "0 0"; st.willChange = "transform";
+        }
+        st.transform = "translate(" + ((x - ai.x) / ai.w * 100).toFixed(3) + "%, " + ((y - (ai.y - S0)) / ai.h * 100).toFixed(3) + "%) scale(" + (w / ai.w).toFixed(4) + ", " + (h / ai.h).toFixed(4) + ")";
+        vis[i] = (y + h > 0 && y < vh) ? 1 : 0;
+        let o = i * 4; g.last[o] = x; g.last[o + 1] = y; g.last[o + 2] = w; g.last[o + 3] = h;
+    }
+    if (typeof _thObs !== "undefined" && _thObs) { try { _thObs.takeRecords(); } catch (e) {} }   // Farbthema-Beobachter nicht mit transform-Aenderungen belasten
+}
+function _pzSchedule(g) {
+    if (g.raf || g.releasing) return;
+    g.raf = requestAnimationFrame(() => { g.raf = 0; if (_pz === g && !g.releasing) _pzRender(g); });
+}
+// Schliesst die Geste ab: echten Zoom und Scrollposition setzen, transforms entfernen (alles im selben Frame) und Restabweichungen ausgleichen
+function _pzCommit(g, E) {
+    if (g.raf) { cancelAnimationFrame(g.raf); g.raf = 0; }
+    let pe = g.pe, tiles = g.tiles, n = tiles.length;
+    if (!pe || !pe.isConnected) { _pz = null; document.documentElement.classList.remove("pz-pinching"); return; }
+    let changed = Math.abs(E.z - g.z0) > 0.0005;
+    for (let i = 0; i < n; i++) if (g.touched[i]) tiles[i].style.transform = g.prev[i][0] || "";   // transition bleibt vorerst "none" (sonst glitte der transform per CSS-transition)
+    if (changed) { pantryZoom = E.z; applyPantryZoom(); _pzSaveSoon(); } else { pe.style.zoom = g.prevZoom; }
+    window.scrollTo(0, g.Snew);
+    // Restabweichung zwischen berechnetem und echtem Layout (z. B. begrenzte Scrollposition) weich ausgleichen
+    let anims = [], vh = window.innerHeight || 800;
+    for (let i = 0; i < n; i++) {
+        if (!g.touched[i]) continue;
+        let o = i * 4, vx = g.last[o], vy = g.last[o + 1], vw = g.last[o + 2], vhh = g.last[o + 3];
+        if (!(vy + vhh > 0 && vy < vh)) continue;
+        let l = tiles[i].getBoundingClientRect();
+        if (!(l.width > 0 && l.height > 0) || !tiles[i].animate) continue;
+        let dx = (vx - l.left) / l.width * 100, dy = (vy - l.top) / l.height * 100, sx = vw / l.width, sy = vhh / l.height;
+        if (Math.abs(vx - l.left) < 1.2 && Math.abs(vy - l.top) < 1.2 && Math.abs(vw - l.width) < 1.2) continue;
+        try {
+            anims.push(tiles[i].animate([
+                { transformOrigin: "0 0", transform: "translate(" + dx + "%, " + dy + "%) scale(" + sx + ", " + sy + ")" },
+                { transformOrigin: "0 0", transform: "translate(0%, 0%) scale(1, 1)" }
+            ], { duration: 200, easing: "cubic-bezier(.2,.85,.25,1)" }));
+        } catch (e) {}
+    }
+    _pzFlips = anims;
+    // Rest der Inline-Styles einen Frame spaeter zuruecksetzen
+    requestAnimationFrame(() => {
+        for (let i = 0; i < n; i++) if (g.touched[i]) { let st = tiles[i].style; st.transformOrigin = g.prev[i][1] || ""; st.willChange = g.prev[i][3] || ""; st.transition = g.prev[i][2] || ""; }
+    });
+    window._pzBlockClickUntil = Date.now() + 350;
+    document.documentElement.classList.remove("pz-pinching");
+    _pz = null;
+}
+// Finger losgelassen: weich auf die naechste Stufe gleiten, dann abschliessen
+function _pzRelease(g) {
+    if (g.releasing) return;
+    g.releasing = true;
+    if (g.raf) { cancelAnimationFrame(g.raf); g.raf = 0; }
+    let ent = g.entries, zc = Math.max(ent[0].z, Math.min(ent[ent.length - 1].z, g.zc));
+    let best = ent[0], bd = Infinity;
+    ent.forEach(E => { let d = Math.abs(Math.log(zc / E.z)); if (d < bd) { bd = d; best = E; } });
+    g.target = best;
+    let z0 = zc, lg = Math.log(best.z / z0);
+    if (Math.abs(lg) < 0.002) { g.zc = best.z; _pzRender(g); _pzCommit(g, best); return; }
+    let t0 = performance.now(), dur = Math.min(260, 90 + Math.abs(lg) * 700);
+    let step = now => {
+        if (_pz !== g) return;
+        let p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+        g.zc = p >= 1 ? best.z : z0 * Math.exp(lg * e);
+        _pzRender(g);
+        if (p < 1) g.raf = requestAnimationFrame(step); else { g.raf = 0; _pzCommit(g, best); }
+    };
+    g.raf = requestAnimationFrame(step);
+}
 (function initPantryZoomGestures() {
     if (window._pzBound) return;
     window._pzBound = true;
-    let st = null, wacc = 0;
+    let wacc = 0, d0 = 1;
     let active = () => pantryZoomEnabled && currentPage === "home" && !window.pantryEditMode && !window.pantrySelectMode;
     let inPantry = e => { let t = e.target; return !!(t && t.closest && t.closest("#pantryHomeContent")); };
     let dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
     document.addEventListener("touchstart", e => {
         if (!active() || e.touches.length !== 2 || !inPantry(e)) return;
-        st = { d0: dist(e.touches) || 1 };
+        if (_pz && _pz.releasing) { let g0 = _pz; g0.zc = g0.target.z; _pzRender(g0); _pzCommit(g0, g0.target); }   // laufendes Ausgleiten sofort beenden
+        if (_pz) return;
+        let mx = (e.touches[0].clientX + e.touches[1].clientX) / 2, my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         document.documentElement.classList.add("pz-pinching");   // Scroll-Anchoring des Browsers aus (siehe CSS)
+        let g = null; try { g = _pzBegin(mx, my); } catch (x) { g = null; }
+        if (!g) { document.documentElement.classList.remove("pz-pinching"); return; }
+        _pz = g; d0 = dist(e.touches) || 1;
         window._pzBlockClickUntil = Date.now() + 600;
     }, { passive: false });
     document.addEventListener("touchmove", e => {
-        if (!st || e.touches.length !== 2) return;
+        let g = _pz;
+        if (!g || g.releasing || e.touches.length !== 2) return;
         e.preventDefault();
+        g.zc = g.z0 * dist(e.touches) / d0;
+        g.my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         window._pzBlockClickUntil = Date.now() + 600;
-        if (Date.now() < _pzBusyUntil) return;            // erst nach der laufenden Animation die naechste Stufe
-        let d = dist(e.touches), r = d / st.d0;
-        let dir = r >= 1.22 ? 1 : (r <= 0.82 ? -1 : 0);   // Spreizen = heranzoomen, Zusammenziehen = herauszoomen
-        if (!dir) return;
-        let mx = (e.touches[0].clientX + e.touches[1].clientX) / 2, my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-        _pzStep(dir, mx, my);
-        st.d0 = d || st.d0;                               // nach jeder Stufe neu ansetzen
+        _pzSchedule(g);
     }, { passive: false });
-    let end = e => {
-        if (st && e.touches.length < 2) {
-            st = null;
-            document.documentElement.classList.remove("pz-pinching");
-            window._pzBlockClickUntil = Date.now() + 400;
-        }
-    };
+    let end = e => { if (_pz && !_pz.releasing && e.touches.length < 2) { window._pzBlockClickUntil = Date.now() + 400; _pzRelease(_pz); } };
     document.addEventListener("touchend", end, { passive: true });
     document.addEventListener("touchcancel", end, { passive: true });
     // Safari: eigene Seitenzoom-Geste unterdruecken, solange der Pantry-Zoom aktiv ist
     ["gesturestart", "gesturechange"].forEach(n => document.addEventListener(n, e => { if (active() && inPantry(e)) e.preventDefault(); }, { passive: false }));
     // Nach einem Pinch kein versehentliches Antippen einer Kachel
     document.addEventListener("click", e => { if (window._pzBlockClickUntil && Date.now() < window._pzBlockClickUntil) { e.stopPropagation(); e.preventDefault(); } }, true);
-    // Rechner: Trackpad-Pinch (kommt als Strg + Wheel) bzw. Strg + Mausrad
+    // Rechner: Strg + Mausrad bzw. Trackpad-Pinch (kommt als Strg + Wheel): stufenweise
     document.addEventListener("wheel", e => {
         if (!e.ctrlKey || !active() || !inPantry(e)) return;
         e.preventDefault();
         wacc += -e.deltaY;
-        if (Date.now() < _pzBusyUntil || Math.abs(wacc) < 40) return;
+        if (_pz || Date.now() < _pzBusyUntil || Math.abs(wacc) < 40) return;
         _pzStep(wacc > 0 ? 1 : -1, e.clientX, e.clientY);
         wacc = 0;
     }, { passive: false });
