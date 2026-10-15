@@ -891,6 +891,8 @@ input[list]::-webkit-calendar-picker-indicator {
 #pantry.pz-active .product, #pantry.pz-active .product * { transition: none !important; animation: none !important; }
 #pantry.pz-active .product { box-shadow: none !important; }
 html.pz-pinching, html.pz-pinching body { overflow-anchor: none; }
+/* Nur kurz beim Ausmessen vor einer Zoom-Geste: :hover/:active-Transforms (iOS: haengendes Hover, Scale 0.97) duerfen die Messung nicht verfaelschen */
+html.pz-measure #pantry .product { transform: none !important; transition: none !important; filter: none !important; }
 #pantryHomeContent .empty-hint { color: #4a4d3e; }
 
 /* Rezepte im Waste-Stats-Stil (einfarbige Kacheln) */
@@ -12823,6 +12825,11 @@ function _pzBegin(mx, my, onlyZs) {
     let tiles = Array.prototype.slice.call(pe.querySelectorAll(".product"));
     if (!tiles.length) return null;
     _pzFlips.forEach(an => { try { an.cancel(); } catch (e) {} }); _pzFlips = [];
+    let root = document.documentElement;
+    root.classList.add("pz-measure");
+    try { return _pzBeginInner(pe, tiles, mx, my, onlyZs); } finally { root.classList.remove("pz-measure"); }
+}
+function _pzBeginInner(pe, tiles, mx, my, onlyZs) {
     let z0 = Math.abs(pantryZoom - 1) < 0.005 ? 1 : pantryZoom;
     let S0 = window.scrollY || window.pageYOffset || 0;
     let pr = pe.getBoundingClientRect(), left0 = pr.left, top0 = pr.top + S0;
@@ -12840,7 +12847,7 @@ function _pzBegin(mx, my, onlyZs) {
     // Pruefung: stimmt das berechnete Layout mit der echten Darstellung ueberein? Sonst keine Geste (lieber nichts als wirres Springen)
     for (let i = 0; i < n; i++) {
         let q = m0.r[i], a = A[i];
-        if (Math.abs(q.x - a.x) > 3 || Math.abs(q.y - a.y) > 3 || Math.abs(q.w - a.w) > 3) return null;
+        if (Math.abs(q.x - a.x) > 6 || Math.abs(q.y - a.y) > 6 || Math.abs(q.w - a.w) > 6) { try { console.warn('pantry-zoom: Layout-Abweichung bei Kachel', i, q, a); } catch (e) {} return null; }
     }
     let below = Math.max(0, docH - (top0 + m0.hl * z0));
     let zs;
@@ -12860,7 +12867,9 @@ function _pzBegin(mx, my, onlyZs) {
     if (idx < 0) { let bd = Infinity; A.forEach((r, i) => { let d = Math.hypot(r.x + r.w / 2 - mx, r.y + r.h / 2 - (my + S0)); if (d < bd) { bd = d; idx = i; } }); }
     let a = A[idx], vh = window.innerHeight || 800, vis = new Uint8Array(n);
     for (let i = 0; i < n; i++) { let y = A[i].y - S0; vis[i] = (y + A[i].h > 0 && y < vh) ? 1 : 0; }
-    return { pe: pe, tiles: tiles, entries: entries, A: A, S0: S0, z0: z0, zc: z0, my: my, Snew: S0, done: null,
+    let heads = [], hs = pe.previousElementSibling;
+    while (hs) { heads.push(hs); hs = hs.previousElementSibling; }      // alles ueber dem Raster (Umschalter, Kopfleiste) wandert mit
+    return { pe: pe, tiles: tiles, heads: heads, headPrev: null, entries: entries, A: A, S0: S0, z0: z0, zc: z0, my: my, Snew: S0, done: null,
         anchor: { i: idx, rx: (mx - a.x) / (a.w || 1), ry: (my + S0 - a.y) / (a.h || 1) },
         vis: vis, touched: new Uint8Array(n), prev: new Array(n), last: new Float32Array(n * 4), raf: 0, releasing: false, target: null };
 }
@@ -12877,6 +12886,11 @@ function _pzRender(g) {
     let Hmax = Math.max(0, E0.H + (E1.H - E0.H) * t - vh);
     let Sn = Math.max(0, Math.min(Hmax, ay - g.my));                                         // virtuelle Scrollposition (Punkt bleibt unter den Fingern)
     g.Snew = Sn;
+    if (g.heads && g.heads.length) {
+        if (!g.headPrev) g.headPrev = g.heads.map(h => [h.style.transform, h.style.willChange]);
+        let ty = "translate3d(0," + (g.S0 - Sn).toFixed(2) + "px,0)";
+        for (let hi = 0; hi < g.heads.length; hi++) { g.heads[hi].style.willChange = "transform"; g.heads[hi].style.transform = ty; }
+    }
     let n = g.tiles.length, A = g.A, vis = g.vis, S0 = g.S0;
     for (let i = 0; i < n; i++) {
         let r0 = E0.r[i], r1 = E1.r[i];
@@ -12906,6 +12920,7 @@ function _pzCommit(g, E) {
     let pe = g.pe, tiles = g.tiles, n = tiles.length, done = g.done;
     document.documentElement.classList.remove("pz-pinching");
     if (!pe || !pe.isConnected) { _pz = null; if (done) done(); return; }
+    if (g.headPrev) g.heads.forEach((h, hi) => { h.style.transform = g.headPrev[hi][0] || ""; h.style.willChange = g.headPrev[hi][1] || ""; });
     let changed = Math.abs(E.z - g.z0) > 0.0005;
     for (let i = 0; i < n; i++) if (g.touched[i]) tiles[i].style.transform = g.prev[i][0] || "";   // transition bleibt vorerst "none" (sonst glitte der transform per CSS-transition)
     if (changed) { pantryZoom = E.z; _pzSaveSoon(); }
@@ -13005,31 +13020,44 @@ function _pzRestoreAfterEdit() {
     window._pzBound = true;
     let wacc = 0, d0 = 1;
     let active = () => pantryZoomEnabled && currentPage === "home" && !window.pantryEditMode && !window.pantrySelectMode;
-    let inPantry = e => { let t = e.target; return !!(t && t.closest && t.closest("#pantryHomeContent")); };
+    let inPantryEl = t => !!(t && t.closest && t.closest("#pantryHomeContent"));
+    let inPantry = e => inPantryEl(e.target);
+    let inPantryTouches = e => { for (let k = 0; k < e.touches.length; k++) if (inPantryEl(e.touches[k].target)) return true; return false; };
     let dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
-    document.addEventListener("touchstart", e => {
-        if (!active() || e.touches.length !== 2 || !inPantry(e)) return;
+    // Startet die Geste, sobald zwei Finger aufliegen - egal ob beim zweiten touchstart oder erst beim ersten gemeinsamen touchmove
+    let tryStart = e => {
+        if (!active() || e.touches.length !== 2 || !inPantryTouches(e)) return false;
         if (_pz && _pz.releasing) { let g0 = _pz; g0.zc = g0.target.z; _pzRender(g0); _pzCommit(g0, g0.target); }   // laufendes Ausgleiten sofort beenden
-        if (_pz) return;
+        if (_pz) return true;
         let mx = (e.touches[0].clientX + e.touches[1].clientX) / 2, my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         document.documentElement.classList.add("pz-pinching");   // Scroll-Anchoring des Browsers aus (siehe CSS)
         let g = null; try { g = _pzBegin(mx, my); } catch (x) { g = null; }
-        if (!g) { document.documentElement.classList.remove("pz-pinching"); return; }
+        if (!g) { document.documentElement.classList.remove("pz-pinching"); return false; }
         _pz = g; d0 = dist(e.touches) || 1;
         window._pzBlockClickUntil = Date.now() + 600;
-    }, { passive: false });
+        return true;
+    };
+    let failedStart = 0;
+    document.addEventListener("touchstart", e => {
+        failedStart = 0;
+        if (e.touches.length === 2 && !tryStart(e)) failedStart = 1;
+    }, { passive: false, capture: true });
     document.addEventListener("touchmove", e => {
+        if (!_pz && failedStart && e.touches.length === 2 && Date.now() > (window._pzRetryAt || 0)) {
+            window._pzRetryAt = Date.now() + 250;     // zweiter Versuch waehrend die Finger liegen (z. B. nachdem Hover/Active-Zustand weg ist)
+            tryStart(e);
+        }
         let g = _pz;
         if (!g || g.releasing || e.touches.length !== 2) return;
-        e.preventDefault();
+        if (e.cancelable) e.preventDefault();
         g.zc = g.z0 * dist(e.touches) / d0;
         g.my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         window._pzBlockClickUntil = Date.now() + 600;
         _pzSchedule(g);
-    }, { passive: false });
-    let end = e => { if (_pz && !_pz.releasing && e.touches.length < 2) { window._pzBlockClickUntil = Date.now() + 400; _pzRelease(_pz); } };
-    document.addEventListener("touchend", end, { passive: true });
-    document.addEventListener("touchcancel", end, { passive: true });
+    }, { passive: false, capture: true });
+    let end = e => { if (_pz && !_pz.releasing && e.touches.length < 2) { window._pzBlockClickUntil = Date.now() + 400; _pzRelease(_pz); } if (e.touches.length === 0) failedStart = 0; };
+    document.addEventListener("touchend", end, { passive: true, capture: true });
+    document.addEventListener("touchcancel", end, { passive: true, capture: true });
     // Safari: eigene Seitenzoom-Geste unterdruecken, solange der Pantry-Zoom aktiv ist
     ["gesturestart", "gesturechange"].forEach(n => document.addEventListener(n, e => { if (active() && inPantry(e)) e.preventDefault(); }, { passive: false }));
     // Nach einem Pinch kein versehentliches Antippen einer Kachel
