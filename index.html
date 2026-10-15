@@ -12881,6 +12881,38 @@ function _pzAnchorAt(x, y) {
     let r = tile.getBoundingClientRect();
     return { el: tile, y: r.top, fy: r.height > 0 ? Math.max(0, Math.min(1, (y - r.top) / r.height)) : 0 };
 }
+// Beendet die Pinch-Geste: Skalierung weich auf die Zielstufe, dann EINMAL echten Zoom setzen (ein Layout), Fingerpunkt per Scroll nachfuehren.
+// Der Umbruch der Kacheln wird mit kurzem Abdunkeln/Einblenden ueberdeckt, damit nichts springt.
+function _pzCommit(cur, zf) {
+    let pe = cur.pe;
+    let clean = () => { pe.style.transition = ""; pe.style.transform = ""; pe.style.transformOrigin = ""; pe.style.willChange = ""; pe.style.opacity = ""; };
+    if (!pe || !pe.isConnected) { window._pzCommitting = false; return; }
+    if (Math.abs(zf - cur.z0) < 0.004) {
+        pe.style.transition = "transform 140ms cubic-bezier(.2,.8,.3,1)";
+        pe.style.transform = "scale(1)";
+        window._pzCommitting = true;
+        setTimeout(() => { clean(); window._pzCommitting = false; }, 150);
+        return;
+    }
+    window._pzCommitting = true;
+    pe.style.transition = "transform 150ms cubic-bezier(.2,.8,.3,1)";
+    pe.style.transform = "scale(" + (zf / cur.z0) + ")";
+    setTimeout(() => {
+        if (!pe.isConnected) { window._pzCommitting = false; return; }
+        pe.style.transition = "none";
+        pe.style.transform = ""; pe.style.transformOrigin = ""; pe.style.willChange = "";
+        pe.style.opacity = "0.4";
+        pantryZoom = zf;
+        applyPantryZoom();
+        _pzKeepAnchor(cur.anchor, { y: cur.my });
+        void pe.offsetHeight;
+        pe.style.transition = "opacity 180ms ease-out";
+        pe.style.opacity = "";
+        clearTimeout(_pzSaveTimer);
+        _pzSaveTimer = setTimeout(() => { try { saveCustomData(); } catch (e2) {} }, 400);
+        setTimeout(() => { pe.style.transition = ""; window._pzCommitting = false; }, 200);
+    }, 155);
+}
 (function initPantryZoomGestures() {
     if (window._pzBound) return;
     window._pzBound = true;
@@ -12888,38 +12920,49 @@ function _pzAnchorAt(x, y) {
     let active = () => pantryZoomEnabled && currentPage === "home" && !window.pantryEditMode && !window.pantrySelectMode;
     let inPantry = e => { let t = e.target; return !!(t && t.closest && t.closest("#pantryHomeContent")); };
     let dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    // Waehrend der Geste wird das Raster nur per GPU skaliert (transform: scale, KEIN Layout pro Frame, KEIN Scrollen) -> auch auf dem iPhone fluessig.
+    // Erst beim Loslassen wird der echte Zoom (CSS zoom) einmal gesetzt, auf die naechste Spaltenstufe eingerastet und der Fingerpunkt per Scroll nachgefuehrt.
     document.addEventListener("touchstart", e => {
-        if (!active() || e.touches.length !== 2 || !inPantry(e)) return;
+        if (!active() || e.touches.length !== 2 || !inPantry(e) || window._pzCommitting) return;
+        let pe = document.getElementById("pantry");
+        if (!pe) return;
         let mx = (e.touches[0].clientX + e.touches[1].clientX) / 2, my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         if (_pzAnimRaf) { cancelAnimationFrame(_pzAnimRaf); _pzAnimRaf = 0; }
-        st = { d0: dist(e.touches) || 1, z0: pantryZoom, mx: mx, my: my, anchor: _pzAnchorAt(mx, my), snaps: null, z: pantryZoom };
-        try { st.snaps = _pzSnapList(); } catch (x) { st.snaps = null; }
+        if (_pzRaf) { cancelAnimationFrame(_pzRaf); _pzRaf = 0; }
         _pzGoal = null;
-        document.documentElement.classList.add("pz-pinching");   // schaltet das Scroll-Anchoring des Browsers aus (siehe CSS)
+        let rc = pe.getBoundingClientRect();
+        st = { d0: dist(e.touches) || 1, z0: pantryZoom, mx: mx, my: my, anchor: _pzAnchorAt(mx, my), snaps: null, z: pantryZoom, s: 1, raf: 0, pe: pe };
+        try { st.snaps = _pzSnapList(); } catch (x) { st.snaps = null; }
+        pe.style.transition = "none";
+        pe.style.transformOrigin = ((mx - rc.left) / (rc.width || 1) * 100) + "% " + ((my - rc.top) / (rc.height || 1) * 100) + "%";
+        pe.style.willChange = "transform";
+        document.documentElement.classList.add("pz-pinching");
         window._pzBlockClickUntil = Date.now() + 600;
     }, { passive: false });
     document.addEventListener("touchmove", e => {
         if (!st || e.touches.length !== 2) return;
         e.preventDefault();
-        let rz = st.z0 * dist(e.touches) / st.d0;
+        let rz = Math.max(pzMin(), Math.min(PANTRY_ZOOM_MAX, st.z0 * dist(e.touches) / st.d0));
         st.z = rz;
-        let fy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-        _pzSetZoom(_pzSoftMagnet(rz, st.snaps), st.anchor, false, { y: fy });
+        st.s = _pzSoftMagnet(rz, st.snaps) / st.z0;   // weicher Magnet an den Spaltenstufen (stetig, kein Sprung)
+        if (!st.raf) st.raf = requestAnimationFrame(() => {
+            if (!st) return;
+            let c = st; c.raf = 0;
+            c.pe.style.transform = "scale(" + c.s + ")";
+        });
         window._pzBlockClickUntil = Date.now() + 600;
     }, { passive: false });
     let end = e => {
         if (st && e.touches.length < 2) {
             let cur = st;
             st = null;
+            if (cur.raf) { cancelAnimationFrame(cur.raf); cur.raf = 0; }
             document.documentElement.classList.remove("pz-pinching");
-            // laufende Glaettung beenden; Ankerkachel-Oberkante auf den aktuellen Stand setzen (sonst springt die Einrast-Animation)
-            if (_pzRaf) { cancelAnimationFrame(_pzRaf); _pzRaf = 0; }
-            _pzGoal = null;
-            if (cur.anchor && cur.anchor.el && cur.anchor.el.isConnected) cur.anchor.y = cur.anchor.el.getBoundingClientRect().top;
             window._pzBlockClickUntil = Date.now() + 400;
-            // Beim Loslassen auf die naechste Stufe einrasten (kein seitlicher Restrand), weich animiert
-            let target = _pzNearestSnap(Math.max(pzMin(), Math.min(PANTRY_ZOOM_MAX, cur.z)), cur.snaps);
-            if (target) _pzAnimateTo(target.z, null, cur.anchor);
+            // Beim Loslassen auf die naechste Stufe einrasten (kein seitlicher Restrand)
+            let zt = Math.max(pzMin(), Math.min(PANTRY_ZOOM_MAX, cur.z));
+            let target = _pzNearestSnap(zt, cur.snaps);
+            _pzCommit(cur, target ? target.z : zt);
         }
     };
     document.addEventListener("touchend", end, { passive: true });
