@@ -12719,25 +12719,55 @@ function toggleShoppingLabelsSetting(checked) {
 }
 
 // ===== Pantry-Zoom (wie die Fotos-Galerie) =====
-// Stufenloses Zwei-Finger-Pinch: die Kacheln folgen live den Fingern. Technik: Vor der Geste werden die ECHTEN Layouts der Zoomstufen
-// (1, 2, 3 ... Kacheln pro Reihe) einmal gemessen. Waehrend der Geste wird nur zwischen diesen gemessenen Positionen interpoliert und
-// ausschliesslich der sichtbare Teil der Kacheln per transform bewegt - kein Layout, kein Scrollen und keine riesige GPU-Ebene pro Frame.
-// Beim Loslassen gleitet der Zoom weich auf die naechste Stufe, danach wird einmal der echte Zoom gesetzt (Positionen stimmen exakt ueberein).
-// Strg + Mausrad am Rechner wechselt stufenweise (siehe _pzStep).
+// Stufenloses Zwei-Finger-Pinch: die Kacheln skalieren live mit den Fingern, der Punkt unter den Fingern bleibt stehen.
+// Es wird bewusst KEIN CSS "zoom" verwendet (WebKit/iOS liefert dort andere Masse als Chrome -> falsche Positionen, Springen).
+// Stattdessen: das Raster hat eine feste Layout-Breite (Breite / Zoom) und wird per transform: scale() skaliert (ueberall identisch).
+// Die Positionen aller Kacheln bei jeder Zoomstufe (1, 2, 3 ... Kacheln pro Reihe) werden vor der Geste berechnet und gegen die echte
+// Darstellung geprueft. Waehrend der Geste wird nur zwischen diesen Positionen interpoliert und nur der sichtbare Teil der Kacheln per
+// transform bewegt (wie ein interaktiver Layout-Uebergang in Fotos). Beim Loslassen gleitet der Zoom weich auf die naechste Stufe.
 const PANTRY_ZOOM_MAX = 1.7;
-// Am Handy weiter rauszoomen koennen (>= 4 Kacheln pro Reihe), am Rechner bleibt es bei 0.5
-function pzMin() { return (window.innerWidth || 1024) <= 600 ? 0.4 : 0.5; }
+function pzMin() { return (window.innerWidth || 1024) <= 600 ? 0.33 : 0.4; }
+let _pz = null;            // aktive Geste
+let _pzFlips = [];         // laufende Rest-Animationen
+let _pzSaveTimer = null;
+function _pzSaveSoon() {
+    clearTimeout(_pzSaveTimer);
+    _pzSaveTimer = setTimeout(() => { try { saveCustomData(); } catch (e) {} }, 400);
+}
+// Breite, die das Raster bei Zoom 1 einnimmt (Inhaltsbreite des Elternelements)
+function _pzContentWidth(el) {
+    let par = el.parentElement || document.body, cs = getComputedStyle(par), ce = getComputedStyle(el);
+    return par.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0) - (parseFloat(ce.marginLeft) || 0) - (parseFloat(ce.marginRight) || 0);
+}
+// Hoehe ausgleichen: transform veraendert die Layout-Hoehe nicht, die Seite soll aber genau so hoch sein wie das skalierte Raster
+function _pzFixBottom(el, z) { el.style.marginBottom = (el.offsetHeight * (z - 1)) + "px"; }
+let _pzRO = null, _pzROEl = null;
+function _pzWatch(el) {
+    if (!window.ResizeObserver || _pzROEl === el) return;
+    if (!_pzRO) _pzRO = new ResizeObserver(() => {
+        let e = _pzROEl;
+        if (e && e.isConnected && !_pz && pantryZoomEnabled && Math.abs(pantryZoom - 1) >= 0.005) _pzFixBottom(e, pantryZoom);
+    });
+    if (_pzROEl) { try { _pzRO.unobserve(_pzROEl); } catch (e) {} }
+    _pzROEl = el; _pzRO.observe(el);
+}
 function applyPantryZoom() {
     let el = document.getElementById("pantry");
     if (!el) return;
-    if (pantryZoomEnabled) {
-        el.style.zoom = Math.abs(pantryZoom - 1) < 0.005 ? "" : String(pantryZoom);
-        el.style.touchAction = "pan-y";
-    } else {
-        el.style.zoom = "";
-        el.style.touchAction = "";
+    let z = pantryZoom;
+    if (!pantryZoomEnabled || Math.abs(z - 1) < 0.005) {
+        el.style.width = ""; el.style.transform = ""; el.style.transformOrigin = ""; el.style.marginBottom = "";
+        el.style.touchAction = pantryZoomEnabled ? "pan-y" : "";
+        return;
     }
+    el.style.width = (_pzContentWidth(el) / z) + "px";
+    el.style.transformOrigin = "0 0";
+    el.style.transform = "scale(" + z + ")";
+    el.style.touchAction = "pan-y";
+    _pzFixBottom(el, z);
+    _pzWatch(el);
 }
+window.addEventListener("resize", () => { clearTimeout(window._pzResizeT); window._pzResizeT = setTimeout(() => { if (!_pz) applyPantryZoom(); }, 150); });
 function togglePantryZoomSetting(checked) {
     pantryZoomEnabled = checked;
     saveCustomData();
@@ -12748,186 +12778,93 @@ function resetPantryZoom() {
     saveCustomData();
     applyPantryZoom();
 }
-let _pzSaveTimer = null;
-function _pzSaveSoon() {
-    clearTimeout(_pzSaveTimer);
-    _pzSaveTimer = setTimeout(() => { try { saveCustomData(); } catch (e) {} }, 400);
-}
-// Haelt die Ankerkachel unter den Fingern: der Punkt der Kachel, der beim Start unter dem Fingermittelpunkt lag (fy = relative Hoehe),
-// bleibt beim Zoomen am aktuellen Fingermittelpunkt (focus.y). Ohne focus (Mausrad, Animation) bleibt die Oberkante der Kachel stehen.
-function _pzKeepAnchor(anchor, focus) {
-    if (!anchor || !anchor.el || !anchor.el.isConnected) return;
-    let r = anchor.el.getBoundingClientRect();
-    let want = (focus && typeof focus.y === "number") ? focus.y - (anchor.fy || 0) * r.height : anchor.y;
-    let dy = r.top - want;
-    if (Math.abs(dy) > 0.25) window.scrollBy(0, dy);
-}
-// ----- Magnetisches Einrasten: Zoomstufen, bei denen n Kacheln ohne seitlichen Restrand genau in eine Reihe passen -----
-// Schrittweite einer Kachel (inkl. Rand) am Bildschirm = u1 * Zoom. Passt n-mal genau in die Breite bei Zoom = Breite / (n * u1).
+// Zoomstufen, bei denen n Kacheln ohne seitlichen Restrand genau in eine Reihe passen
 function _pzSnapList() {
     let pe = document.getElementById("pantry");
     if (!pe) return null;
-    let tiles = pe.querySelectorAll(".product");
-    if (!tiles.length) return window._pzSnapCache || null;
-    let W = pe.getBoundingClientRect().width;
-    if (!(W > 0)) return null;
-    let pitch = 0;
-    let r0 = tiles[0].getBoundingClientRect();
-    for (let i = 1; i < tiles.length && i < 6; i++) {
-        let r = tiles[i].getBoundingClientRect();
-        if (Math.abs(r.top - r0.top) < 2 && r.left > r0.left) { pitch = r.left - r0.left; break; }
-    }
-    if (!pitch) {
-        let cs = getComputedStyle(tiles[0]);
-        let ow = tiles[0].offsetWidth || 1, k = r0.width / ow;
-        pitch = r0.width + (parseFloat(cs.marginLeft) + parseFloat(cs.marginRight)) * k;
-    }
-    let u1 = pitch / (pantryZoom || 1);
-    if (!(u1 > 20)) return window._pzSnapCache || null;
+    let tile = pe.querySelector(".product");
+    if (!tile) return window._pzSnapCache || null;
+    let zEff = Math.abs(pantryZoom - 1) < 0.005 ? 1 : pantryZoom;
+    let cs = getComputedStyle(tile);
+    let ow = tile.getBoundingClientRect().width / zEff + (parseFloat(cs.marginLeft) || 0) + (parseFloat(cs.marginRight) || 0);
+    let P = _pzContentWidth(pe);
+    if (!(ow > 20) || !(P > 20)) return window._pzSnapCache || null;
     let list = [];
-    for (let n = 1; n <= 10; n++) {
-        let z = W / (n * u1) * 0.997;
+    for (let n = 1; n <= 12; n++) {
+        let z = P / (n * ow) * 0.998;
         if (z >= pzMin() - 0.001 && z <= PANTRY_ZOOM_MAX + 0.001) list.push({ n: n, z: z });
     }
     window._pzSnapCache = list;
     return list;
 }
-
-let _pzFlips = [], _pzBusyUntil = 0;
-const PZ_FLIP_MS = 300;
-// Setzt den Zoom EINMAL (ein Layout) und animiert die sichtbaren Kacheln von der alten zur neuen Position.
-// focus = Punkt (Bildschirmkoordinaten), der unter den Fingern stehen bleiben soll; ohne Angabe die Bildschirmmitte.
-function _pzFlipTo(z, focus, done) {
-    let pe = document.getElementById("pantry");
-    z = Math.max(pzMin(), Math.min(PANTRY_ZOOM_MAX, z));
-    if (!pe || Math.abs(z - pantryZoom) < 0.003) { if (done) done(); return; }
-    let vw = window.innerWidth || 390, vh = window.innerHeight || 800;
-    let fx = focus && typeof focus.x === "number" ? focus.x : vw / 2;
-    let fy = focus && typeof focus.y === "number" ? focus.y : vh / 2;
-    let tiles = Array.prototype.slice.call(pe.querySelectorAll(".product"));
-    let canAnim = tiles.length && tiles[0].animate;
-    // 1) FIRST: Position der sichtbaren Kacheln vor dem Umbruch merken (inkl. evtl. noch laufender Animation)
-    let anchor = _pzAnchorAt(fx, fy);
-    let first = new Map();
-    if (canAnim) tiles.forEach(t => {
-        let r = t.getBoundingClientRect();
-        if (r.width > 0 && r.bottom > -200 && r.top < vh + 200) first.set(t, r);
-    });
-    // 2) laufende Animationen beenden, sonst verfaelschen sie die neue Messung
-    _pzFlips.forEach(an => { try { an.cancel(); } catch (e) {} });
-    _pzFlips = [];
-    // 3) LAST: neuer Zoom = ein Layout; Fingerpunkt per einmaligem Scroll an seiner Stelle halten
-    pantryZoom = z;
-    applyPantryZoom();
-    _pzKeepAnchor(anchor, { y: fy });
-    _pzSaveSoon();
-    _pzBusyUntil = Date.now() + PZ_FLIP_MS + 40;
-    if (!canAnim) { if (done) done(); return; }
-    // 4) INVERT + PLAY: jede Kachel startet an ihrer alten Position/Groesse und gleitet an die neue (Prozentwerte beziehen sich auf die Kachel selbst,
-    //    daher unabhaengig vom CSS-zoom)
-    let ease = "cubic-bezier(.2,.85,.25,1)", anims = [];
-    tiles.forEach(t => {
-        let l = t.getBoundingClientRect();
-        if (!(l.width > 0 && l.height > 0)) return;
-        let f = first.get(t);
-        try {
-            if (f) {
-                let dx = (f.left - l.left) / l.width * 100, dy = (f.top - l.top) / l.height * 100;
-                let sx = f.width / l.width, sy = f.height / l.height;
-                if (Math.abs(dx) < 0.05 && Math.abs(dy) < 0.05 && Math.abs(sx - 1) < 0.002) return;
-                anims.push(t.animate([
-                    { transformOrigin: "0 0", transform: "translate(" + dx + "%, " + dy + "%) scale(" + sx + ", " + sy + ")" },
-                    { transformOrigin: "0 0", transform: "translate(0%, 0%) scale(1, 1)" }
-                ], { duration: PZ_FLIP_MS, easing: ease }));
-            } else if (l.bottom > -40 && l.top < vh + 40) {
-                anims.push(t.animate([{ opacity: 0 }, { opacity: 1 }], { duration: PZ_FLIP_MS, easing: "ease-out" }));
-            }
-        } catch (e) {}
-    });
-    _pzFlips = anims;
-    setTimeout(() => { if (_pzFlips === anims) _pzFlips = []; if (done) done(); }, PZ_FLIP_MS + 30);
-}
-// Eine Zoomstufe weiter (dir > 0: heranzoomen = groessere Kacheln, dir < 0: herauszoomen = mehr Spalten)
-function _pzStep(dir, fx, fy) {
-    let list = null; try { list = _pzSnapList(); } catch (e) { list = null; }
-    let cur = pantryZoom, z = null;
-    if (list && list.length) {
-        let zs = list.map(x => x.z).sort((p, q) => p - q);
-        if (dir > 0) z = zs.find(v => v > cur * 1.04);
-        else for (let i = zs.length - 1; i >= 0; i--) { if (zs[i] < cur / 1.04) { z = zs[i]; break; } }
-    } else {
-        z = dir > 0 ? cur * 1.3 : cur / 1.3;
+// Berechnet das Flex-Wrap-Layout (zentrierte Zeilen) aller Kacheln bei Zoom z, in Seitenkoordinaten
+function _pzLayout(items, P, z, left0, top0, below) {
+    let Wl = P / z, n = items.length, r = new Array(n), y = 0, i = 0;
+    while (i < n) {
+        let j = i, sum = 0;
+        while (j < n) { let ow = items[j].ow; if (j > i && sum + ow > Wl + 0.01) break; sum += ow; j++; }
+        let lh = 0;
+        for (let k = i; k < j; k++) lh = Math.max(lh, items[k].oh);
+        let x = (Wl - sum) / 2;
+        for (let k = i; k < j; k++) {
+            let it = items[k];
+            r[k] = { x: left0 + (x + it.ml) * z, y: top0 + (y + it.mt) * z, w: it.w * z, h: it.h * z };
+            x += it.ow;
+        }
+        y += lh; i = j;
     }
-    if (z == null) return false;
-    _pzFlipTo(z, { x: fx, y: fy });
-    return true;
+    return { r: r, hl: y, H: top0 + y * z + below };
 }
-// Fuer den Bearbeiten-Modus (siehe unten): sanft auf eine bestimmte Stufe
-function _pzAnimateTo(target, done, anchor) {
-    _pzFlipTo(target, anchor && anchor.el ? { x: (window.innerWidth || 390) / 2, y: anchor.y } : null, done);
-}
-// Bearbeiten-Modus: auf die 2-Kacheln-Ansicht heranzoomen (falls kleiner), Zoom danach wieder herstellen
-function _pzFitForEdit(next) {
-    if (!pantryZoomEnabled) { next(); return; }
-    let list = null; try { list = _pzSnapList(); } catch (e) { list = null; }
-    let two = list && list.find(s => s.n === 2);
-    if (two && pantryZoom < two.z - 0.02) {
-        window._pzPreEdit = pantryZoom;
-        _pzAnimateTo(two.z, next);
-    } else { window._pzPreEdit = null; next(); }
-}
-function _pzRestoreAfterEdit() {
-    let prev = window._pzPreEdit;
-    window._pzPreEdit = null;
-    if (prev && pantryZoomEnabled) setTimeout(() => { if (!window.pantryEditMode) _pzAnimateTo(prev); }, 320);
-}
-function _pzAnchorAt(x, y) {
-    let t = document.elementFromPoint(x, y);
-    let tile = t && t.closest ? t.closest("#pantry .product") : null;
-    if (!tile) return null;
-    let r = tile.getBoundingClientRect();
-    return { el: tile, y: r.top, fy: r.height > 0 ? Math.max(0, Math.min(1, (y - r.top) / r.height)) : 0 };
-}
-// ----- Stufenloser Pinch (Engine) -----
-let _pz = null;   // aktive Geste
-function _pzMeasure(pe, tiles, zoomStr) {
-    pe.style.zoom = zoomStr;
-    tiles[0].getBoundingClientRect();                                // erzwingt das Layout
-    let sy = window.scrollY || window.pageYOffset || 0;              // evtl. vom Browser begrenzt -> Seitenkoordinaten verwenden
-    let r = new Array(tiles.length);
-    for (let i = 0; i < tiles.length; i++) { let b = tiles[i].getBoundingClientRect(); r[i] = { x: b.left, y: b.top + sy, w: b.width, h: b.height }; }
-    return { r: r, H: document.documentElement.scrollHeight };
-}
-function _pzBegin(mx, my) {
+// Startet eine Geste/Animation: misst die echte Darstellung, berechnet die Layouts der Zoomstufen und prueft sie gegen die Realitaet.
+// onlyZs: nur diese Zielzoomstufen statt aller Spaltenstufen (fuer programmatische Uebergaenge). Gibt null zurueck, wenn etwas nicht stimmt.
+function _pzBegin(mx, my, onlyZs) {
     let pe = document.getElementById("pantry");
     if (!pe) return null;
     let tiles = Array.prototype.slice.call(pe.querySelectorAll(".product"));
     if (!tiles.length) return null;
     _pzFlips.forEach(an => { try { an.cancel(); } catch (e) {} }); _pzFlips = [];
-    let z0 = pantryZoom, S0 = window.scrollY || window.pageYOffset || 0, prevZoom = pe.style.zoom;
-    let list = null; try { list = _pzSnapList(); } catch (e) { list = null; }
-    let zs = (list || []).map(x => x.z).filter(z => z >= pzMin() - 0.001 && z <= PANTRY_ZOOM_MAX + 0.001 && Math.abs(Math.log(z / z0)) > 0.03);
-    let entries = zs.map(z => ({ z: z, base: false }));
-    entries.push({ z: z0, base: true });
+    let z0 = Math.abs(pantryZoom - 1) < 0.005 ? 1 : pantryZoom;
+    let S0 = window.scrollY || window.pageYOffset || 0;
+    let pr = pe.getBoundingClientRect(), left0 = pr.left, top0 = pr.top + S0;
+    let P = _pzContentWidth(pe), n = tiles.length;
+    let A = new Array(n), items = new Array(n);
+    for (let i = 0; i < n; i++) {
+        let b = tiles[i].getBoundingClientRect(), cs = getComputedStyle(tiles[i]);
+        let ml = parseFloat(cs.marginLeft) || 0, mr = parseFloat(cs.marginRight) || 0, mt = parseFloat(cs.marginTop) || 0, mb = parseFloat(cs.marginBottom) || 0;
+        let w = b.width / z0, h = b.height / z0;
+        A[i] = { x: b.left, y: b.top + S0, w: b.width, h: b.height };
+        items[i] = { w: w, h: h, ml: ml, mr: mr, mt: mt, mb: mb, ow: w + ml + mr, oh: h + mt + mb };
+    }
+    let docH = document.documentElement.scrollHeight;
+    let m0 = _pzLayout(items, P, z0, left0, top0, 0);
+    // Pruefung: stimmt das berechnete Layout mit der echten Darstellung ueberein? Sonst keine Geste (lieber nichts als wirres Springen)
+    for (let i = 0; i < n; i++) {
+        let q = m0.r[i], a = A[i];
+        if (Math.abs(q.x - a.x) > 3 || Math.abs(q.y - a.y) > 3 || Math.abs(q.w - a.w) > 3) return null;
+    }
+    let below = Math.max(0, docH - (top0 + m0.hl * z0));
+    let zs;
+    if (onlyZs) zs = onlyZs.slice();
+    else {
+        let ow0 = items[0].ow; zs = [];
+        for (let k = 1; k <= 12; k++) zs.push(P / (k * ow0) * 0.998);
+    }
+    zs = zs.filter(z => z >= pzMin() - 0.001 && z <= PANTRY_ZOOM_MAX + 0.001 && Math.abs(Math.log(z / z0)) > 0.03);
+    let entries = zs.map(z => { let m = _pzLayout(items, P, z, left0, top0, below); return { z: z, base: false, r: m.r, H: m.H }; });
+    entries.push({ z: z0, base: true, r: A, H: docH });
     entries.sort((p, q) => p.z - q.z);
     if (entries.length < 2) return null;
-    // Echte Layouts jeder Stufe messen (ohne zwischendurch zu zeichnen) und danach den Ausgangszustand exakt wiederherstellen
-    entries.forEach(E => { let m = _pzMeasure(pe, tiles, E.base ? prevZoom : String(E.z)); E.r = m.r; E.H = m.H; });
-    pe.style.zoom = prevZoom;
-    window.scrollTo(0, S0);
-    let A = entries.find(E => E.base).r;
     // Ankerkachel unter dem Fingermittelpunkt
     let idx = -1, el = document.elementFromPoint(mx, my), tl = el && el.closest ? el.closest("#pantry .product") : null;
     if (tl) idx = tiles.indexOf(tl);
     if (idx < 0) { let bd = Infinity; A.forEach((r, i) => { let d = Math.hypot(r.x + r.w / 2 - mx, r.y + r.h / 2 - (my + S0)); if (d < bd) { bd = d; idx = i; } }); }
-    let a = A[idx];
-    let n = tiles.length, vh = window.innerHeight || 800, vis = new Uint8Array(n);
+    let a = A[idx], vh = window.innerHeight || 800, vis = new Uint8Array(n);
     for (let i = 0; i < n; i++) { let y = A[i].y - S0; vis[i] = (y + A[i].h > 0 && y < vh) ? 1 : 0; }
-    return { pe: pe, tiles: tiles, entries: entries, A: A, S0: S0, z0: z0, zc: z0, my: my, prevZoom: prevZoom, Snew: S0,
+    return { pe: pe, tiles: tiles, entries: entries, A: A, S0: S0, z0: z0, zc: z0, my: my, Snew: S0, done: null,
         anchor: { i: idx, rx: (mx - a.x) / (a.w || 1), ry: (my + S0 - a.y) / (a.h || 1) },
         vis: vis, touched: new Uint8Array(n), prev: new Array(n), last: new Float32Array(n * 4), raf: 0, releasing: false, target: null };
 }
-// Zeichnet den Zwischenzustand bei Zoom g.zc: Positionen = Mischung aus den beiden benachbarten, gemessenen Layouts
+// Zeichnet den Zwischenzustand bei Zoom g.zc: Positionen = Mischung aus den beiden benachbarten Layouts
 function _pzRender(g) {
     let ent = g.entries, vh = window.innerHeight || 800;
     let zc = Math.max(ent[0].z, Math.min(ent[ent.length - 1].z, g.zc));
@@ -12936,15 +12873,15 @@ function _pzRender(g) {
     let t = Math.log(zc / E0.z) / Math.log(E1.z / E0.z);
     t = t < 0 ? 0 : (t > 1 ? 1 : t);
     let ia = g.anchor.i, a0 = E0.r[ia], a1 = E1.r[ia];
-    let ay = (a0.y + (a1.y - a0.y) * t) + g.anchor.ry * (a0.h + (a1.h - a0.h) * t);        // Seitenkoordinate des Fingerpunkts
+    let ay = (a0.y + (a1.y - a0.y) * t) + g.anchor.ry * (a0.h + (a1.h - a0.h) * t);       // Seitenkoordinate des Fingerpunkts
     let Hmax = Math.max(0, E0.H + (E1.H - E0.H) * t - vh);
-    let Sn = Math.max(0, Math.min(Hmax, ay - g.my));                                          // virtuelle Scrollposition (Punkt bleibt unter den Fingern)
+    let Sn = Math.max(0, Math.min(Hmax, ay - g.my));                                         // virtuelle Scrollposition (Punkt bleibt unter den Fingern)
     g.Snew = Sn;
     let n = g.tiles.length, A = g.A, vis = g.vis, S0 = g.S0;
     for (let i = 0; i < n; i++) {
         let r0 = E0.r[i], r1 = E1.r[i];
         let y = r0.y + (r1.y - r0.y) * t - Sn, h = r0.h + (r1.h - r0.h) * t;
-        if (!(y + h > -300 && y < vh + 300) && !vis[i]) continue;                             // weit ausserhalb: nicht anfassen
+        if (!(y + h > -300 && y < vh + 300) && !vis[i]) continue;                            // weit ausserhalb: nicht anfassen
         let ai = A[i]; if (!(ai.w > 0 && ai.h > 0)) continue;
         let x = r0.x + (r1.x - r0.x) * t, w = r0.w + (r1.w - r0.w) * t;
         let el = g.tiles[i], st = el.style;
@@ -12963,16 +12900,17 @@ function _pzSchedule(g) {
     if (g.raf || g.releasing) return;
     g.raf = requestAnimationFrame(() => { g.raf = 0; if (_pz === g && !g.releasing) _pzRender(g); });
 }
-// Schliesst die Geste ab: echten Zoom und Scrollposition setzen, transforms entfernen (alles im selben Frame) und Restabweichungen ausgleichen
+// Schliesst ab: echte Skalierung/Breite und Scrollposition setzen, Kachel-transforms entfernen (alles im selben Frame), Restabweichungen weich ausgleichen
 function _pzCommit(g, E) {
     if (g.raf) { cancelAnimationFrame(g.raf); g.raf = 0; }
-    let pe = g.pe, tiles = g.tiles, n = tiles.length;
-    if (!pe || !pe.isConnected) { _pz = null; document.documentElement.classList.remove("pz-pinching"); return; }
+    let pe = g.pe, tiles = g.tiles, n = tiles.length, done = g.done;
+    document.documentElement.classList.remove("pz-pinching");
+    if (!pe || !pe.isConnected) { _pz = null; if (done) done(); return; }
     let changed = Math.abs(E.z - g.z0) > 0.0005;
     for (let i = 0; i < n; i++) if (g.touched[i]) tiles[i].style.transform = g.prev[i][0] || "";   // transition bleibt vorerst "none" (sonst glitte der transform per CSS-transition)
-    if (changed) { pantryZoom = E.z; applyPantryZoom(); _pzSaveSoon(); } else { pe.style.zoom = g.prevZoom; }
+    if (changed) { pantryZoom = E.z; _pzSaveSoon(); }
+    applyPantryZoom();
     window.scrollTo(0, g.Snew);
-    // Restabweichung zwischen berechnetem und echtem Layout (z. B. begrenzte Scrollposition) weich ausgleichen
     let anims = [], vh = window.innerHeight || 800;
     for (let i = 0; i < n; i++) {
         if (!g.touched[i]) continue;
@@ -12980,44 +12918,87 @@ function _pzCommit(g, E) {
         if (!(vy + vhh > 0 && vy < vh)) continue;
         let l = tiles[i].getBoundingClientRect();
         if (!(l.width > 0 && l.height > 0) || !tiles[i].animate) continue;
-        let dx = (vx - l.left) / l.width * 100, dy = (vy - l.top) / l.height * 100, sx = vw / l.width, sy = vhh / l.height;
         if (Math.abs(vx - l.left) < 1.2 && Math.abs(vy - l.top) < 1.2 && Math.abs(vw - l.width) < 1.2) continue;
         try {
             anims.push(tiles[i].animate([
-                { transformOrigin: "0 0", transform: "translate(" + dx + "%, " + dy + "%) scale(" + sx + ", " + sy + ")" },
+                { transformOrigin: "0 0", transform: "translate(" + ((vx - l.left) / l.width * 100) + "%, " + ((vy - l.top) / l.height * 100) + "%) scale(" + (vw / l.width) + ", " + (vhh / l.height) + ")" },
                 { transformOrigin: "0 0", transform: "translate(0%, 0%) scale(1, 1)" }
             ], { duration: 200, easing: "cubic-bezier(.2,.85,.25,1)" }));
         } catch (e) {}
     }
     _pzFlips = anims;
-    // Rest der Inline-Styles einen Frame spaeter zuruecksetzen
     requestAnimationFrame(() => {
         for (let i = 0; i < n; i++) if (g.touched[i]) { let st = tiles[i].style; st.transformOrigin = g.prev[i][1] || ""; st.willChange = g.prev[i][3] || ""; st.transition = g.prev[i][2] || ""; }
     });
     window._pzBlockClickUntil = Date.now() + 350;
-    document.documentElement.classList.remove("pz-pinching");
     _pz = null;
+    if (done) setTimeout(done, 30);
 }
-// Finger losgelassen: weich auf die naechste Stufe gleiten, dann abschliessen
-function _pzRelease(g) {
-    if (g.releasing) return;
-    g.releasing = true;
+// Weich auf Zielstufe E gleiten (Zoom-Wert laeuft ease-out), dann abschliessen
+function _pzGlideTo(g, E) {
+    g.releasing = true; g.target = E;
     if (g.raf) { cancelAnimationFrame(g.raf); g.raf = 0; }
-    let ent = g.entries, zc = Math.max(ent[0].z, Math.min(ent[ent.length - 1].z, g.zc));
-    let best = ent[0], bd = Infinity;
-    ent.forEach(E => { let d = Math.abs(Math.log(zc / E.z)); if (d < bd) { bd = d; best = E; } });
-    g.target = best;
-    let z0 = zc, lg = Math.log(best.z / z0);
-    if (Math.abs(lg) < 0.002) { g.zc = best.z; _pzRender(g); _pzCommit(g, best); return; }
-    let t0 = performance.now(), dur = Math.min(260, 90 + Math.abs(lg) * 700);
+    let ent = g.entries, z0 = Math.max(ent[0].z, Math.min(ent[ent.length - 1].z, g.zc)), lg = Math.log(E.z / z0);
+    if (Math.abs(lg) < 0.002) { g.zc = E.z; _pzRender(g); _pzCommit(g, E); return; }
+    let t0 = performance.now(), dur = Math.min(280, 100 + Math.abs(lg) * 700);
     let step = now => {
         if (_pz !== g) return;
         let p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
-        g.zc = p >= 1 ? best.z : z0 * Math.exp(lg * e);
+        g.zc = p >= 1 ? E.z : z0 * Math.exp(lg * e);
         _pzRender(g);
-        if (p < 1) g.raf = requestAnimationFrame(step); else { g.raf = 0; _pzCommit(g, best); }
+        if (p < 1) g.raf = requestAnimationFrame(step); else { g.raf = 0; _pzCommit(g, E); }
     };
     g.raf = requestAnimationFrame(step);
+}
+// Finger losgelassen: auf die naechste Stufe einrasten
+function _pzRelease(g) {
+    if (g.releasing) return;
+    let ent = g.entries, zc = Math.max(ent[0].z, Math.min(ent[ent.length - 1].z, g.zc));
+    let best = ent[0], bd = Infinity;
+    ent.forEach(E => { let d = Math.abs(Math.log(zc / E.z)); if (d < bd) { bd = d; best = E; } });
+    _pzGlideTo(g, best);
+}
+// Programmatisch (Bearbeiten-Modus, Mausrad): sanft zu einer bestimmten Zoomstufe, Bildschirmmitte bzw. focus bleibt stehen
+function _pzRunTo(z, focus, done) {
+    z = Math.max(pzMin(), Math.min(PANTRY_ZOOM_MAX, z));
+    if (_pz || Math.abs(z - pantryZoom) < 0.003) { if (done) done(); return; }
+    let fx = focus && typeof focus.x === "number" ? focus.x : (window.innerWidth || 390) / 2;
+    let fy = focus && typeof focus.y === "number" ? focus.y : (window.innerHeight || 800) / 2;
+    let g = null; try { g = _pzBegin(fx, fy, [z]); } catch (e) { g = null; }
+    let tgt = g && g.entries.find(E => !E.base);
+    if (!g || !tgt) { pantryZoom = z; applyPantryZoom(); _pzSaveSoon(); if (done) done(); return; }
+    _pz = g; g.done = done || null;
+    document.documentElement.classList.add("pz-pinching");
+    _pzGlideTo(g, tgt);
+}
+// Eine Zoomstufe weiter (dir > 0: heranzoomen = groessere Kacheln, dir < 0: herauszoomen = mehr Spalten)
+function _pzStep(dir, fx, fy) {
+    let list = null; try { list = _pzSnapList(); } catch (e) { list = null; }
+    let cur = pantryZoom, z = null;
+    if (list && list.length) {
+        let zs = list.map(x => x.z).sort((p, q) => p - q);
+        if (dir > 0) z = zs.find(v => v > cur * 1.04);
+        else for (let i = zs.length - 1; i >= 0; i--) { if (zs[i] < cur / 1.04) { z = zs[i]; break; } }
+    } else z = dir > 0 ? cur * 1.3 : cur / 1.3;
+    if (z == null) return false;
+    _pzRunTo(z, { x: fx, y: fy });
+    return true;
+}
+function _pzAnimateTo(target, done) { _pzRunTo(target, null, done); }
+// Bearbeiten-Modus: auf die 2-Kacheln-Ansicht heranzoomen (falls kleiner), Zoom danach wieder herstellen
+function _pzFitForEdit(next) {
+    if (!pantryZoomEnabled) { next(); return; }
+    let list = null; try { list = _pzSnapList(); } catch (e) { list = null; }
+    let two = list && list.find(s => s.n === 2);
+    if (two && pantryZoom < two.z - 0.02) {
+        window._pzPreEdit = pantryZoom;
+        _pzAnimateTo(two.z, next);
+    } else { window._pzPreEdit = null; next(); }
+}
+function _pzRestoreAfterEdit() {
+    let prev = window._pzPreEdit;
+    window._pzPreEdit = null;
+    if (prev && pantryZoomEnabled) setTimeout(() => { if (!window.pantryEditMode) _pzAnimateTo(prev); }, 320);
 }
 (function initPantryZoomGestures() {
     if (window._pzBound) return;
@@ -13058,7 +13039,7 @@ function _pzRelease(g) {
         if (!e.ctrlKey || !active() || !inPantry(e)) return;
         e.preventDefault();
         wacc += -e.deltaY;
-        if (_pz || Date.now() < _pzBusyUntil || Math.abs(wacc) < 40) return;
+        if (_pz || Math.abs(wacc) < 40) return;
         _pzStep(wacc > 0 ? 1 : -1, e.clientX, e.clientY);
         wacc = 0;
     }, { passive: false });
