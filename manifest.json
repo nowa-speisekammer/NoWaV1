@@ -14,8 +14,8 @@
   "handle_links": "preferred",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#dbdcc2",
-  "theme_color": "#ffffff",
+  "background_color": "#5b8789",
+  "theme_color": "#5b8789",
   "share_target": {
     "action": "./index.html",
     "method": "POST",
