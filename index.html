@@ -70,6 +70,24 @@ body {
 
 h1.nav-title,
 #shopCategoryHomeContent > h1 { text-transform: uppercase; }
+/* ===== Kachel-Stil (Einstellungen > Design > Kacheln) =====
+   Prinzip "Karte mit Signal-Fuss": Die Ampelfarbe bleibt als Fuss der Kachel (der inline gesetzte Hintergrund), darueber liegt eine weisse Karte (::before) fuer Bild und Name.
+   Farbe = nur Signal (Fuss + Ring), alle Schrift in Tinte (gute Lesbarkeit auf Weiss und auf den hellen Signalfarben). "retro": dicke Tuschekante + harter Schatten. */
+[data-tile="karte"] :where(#pantry .product, .product.mhd-edit-tile, .tile-prev .product), [data-tile="retro"] :where(#pantry .product, .product.mhd-edit-tile, .tile-prev .product) { isolation: isolate; padding-bottom: 12px; outline: none !important; }
+[data-tile="karte"] :where(#pantry .product, .product.mhd-edit-tile, .tile-prev .product)::before, [data-tile="retro"] :where(#pantry .product, .product.mhd-edit-tile, .tile-prev .product)::before { content: ""; position: absolute; z-index: -1; pointer-events: none; left: -0.5px; right: -0.5px; top: -0.5px; bottom: var(--tl-foot, 50px); box-sizing: border-box; border-radius: inherit; border-bottom-left-radius: 0; border-bottom-right-radius: 0; background: #fffff4; }
+[data-tile="karte"] :where(#pantry .product, .product.mhd-edit-tile, .tile-prev .product), [data-tile="retro"] :where(#pantry .product, .product.mhd-edit-tile, .tile-prev .product) { --tl-ink: #2b2d22; }
+[data-tile="karte"] :where(#pantry .product, .product.mhd-edit-tile, .tile-prev .product) > .product-name, [data-tile="retro"] :where(#pantry .product, .product.mhd-edit-tile, .tile-prev .product) > .product-name { color: var(--tl-ink); text-shadow: none !important; }
+[data-tile="karte"] :where(#pantry .product, .product.mhd-edit-tile, .tile-prev .product) > .pantry-qty, [data-tile="retro"] :where(#pantry .product, .product.mhd-edit-tile, .tile-prev .product) > .pantry-qty { color: var(--tl-ink); margin-bottom: 6px; }
+[data-tile="karte"] :where(#pantry .product, .product.mhd-edit-tile, .tile-prev .product) > :is(.pantry-timer, [id^="mhd-timer-"]), [data-tile="retro"] :where(#pantry .product, .product.mhd-edit-tile, .tile-prev .product) > :is(.pantry-timer, [id^="mhd-timer-"]) { height: 26px; line-height: 26px; margin-top: 14px !important; color: var(--tl-ink); font-weight: 800; text-shadow: none !important; }
+[data-tile="karte"] :where(#pantry .product, .product.mhd-edit-tile, .tile-prev .product) { box-shadow: 0 6px 14px rgba(0,0,0,0.18) !important; }
+[data-tile="retro"] :where(#pantry .product, .product.mhd-edit-tile, .tile-prev .product) { outline: 3px solid #2b2d22 !important; outline-offset: 0 !important; box-shadow: 4px 5px 0 #2b2d22 !important; }
+[data-tile="retro"] :where(#pantry .product, .product.mhd-edit-tile, .tile-prev .product)::before { background: #fffdf5; border-bottom: 3px solid #2b2d22; }
+:is([data-tile="karte"], [data-tile="retro"]) :where(#pantry .product, .product.mhd-edit-tile, .tile-prev .product) .circle-container .no-image-placeholder { background-color: #efebdd !important; background-image: repeating-linear-gradient(-45deg, rgba(0,0,0,0.05) 0 2px, transparent 2px 6px) !important; box-shadow: inset 0 2px 4px rgba(0,0,0,0.13) !important; }
+.tile-prev { display: flex; gap: 10px; justify-content: center; padding: 12px 8px 14px; border-radius: 12px; }
+.tile-prev .product { width: 64px; margin: 0; padding: 10px 4px 6px; border-radius: 22px; --tl-r: 22px; --tl-foot: 30px; text-align: center; cursor: default; }
+.tile-prev .product-name { min-height: 0; font-size: 12px; justify-content: center; }
+.tile-prev .pantry-timer { font-size: 11px; height: 18px !important; line-height: 18px !important; margin-top: 6px !important; }
+.tile-prev .tp-ring { width: 34px; height: 34px; margin: 0 auto 4px; border-radius: 50%; border: 4px solid; box-sizing: border-box; }
 /* Helle Seitenfarbe (Hintergrund "Nebel"): Seitentitel in Tinte statt Weiss */
 html[data-pgl="1"] #app h1 { color: #2b2d22 !important; }
 html[data-pgl="1"] #app h1 img { filter: brightness(0) opacity(0.82) !important; }
@@ -4754,19 +4772,27 @@ html[data-navfix][data-navfix][data-navfix]:not([data-navfix="ampel"]) :is(.fixe
 [data-bar^="kontur-"] { --nb-inkt:#2b2d22; }
 [data-bar="kontur-tuerkis"] { --nb-ink:#398283; --nb-act:#398283; --nb-ind:#398283; }
 [data-bar="kontur-blau"]    { --nb-ink:#5a7fa6; --nb-act:#5a7fa6; --nb-ind:#5a7fa6; }
-[data-bar="karte"] { --nb-bg:#fffff4; --nb-bc:#2b2d22; --nb-bw:2px 2px 5px 2px; --nb-sh:none; --nb-pad:10px 0 8px; --nb-ink:#2b2d22; --nb-act:#fffff4; --nb-ind:#5a9098; --nb-indop:1; --nb-indsh:none;
-    --nb-iw:44px; --nb-ih:42px; --nb-ir:14px; --nb-iy:0px; --nb-badge:#b34b4b; --nb-ring:#fffff4;
-    --nb-pw:24px; --nb-ph:22px; --nb-pr:8px; --nb-piy:0px;
-    --nb-seg-bg:#fffff4; --nb-seg-bc:#2b2d22; --nb-seg-bw:2px 2px 4px 2px; --nb-seg-sh:none; --nb-seg-ink:rgba(43,45,34,0.8); --nb-seg-on-bg:#5a9098; --nb-seg-on-ink:#fffff4; --nb-seg-on-sh:none; }
+[data-bar="karte"] { --nb-bg:#fffff4; --nb-bc:#2b2d22; --nb-bw:2px 2px 5px 2px; --nb-sh:none; --nb-pad:10px 0 8px; --nb-ink:#2b2d22; --nb-act:#5a9098; --nb-ind:#5a9098; --nb-indop:1; --nb-indsh:none;
+    --nb-iw:18px; --nb-ih:3px; --nb-ir:2px; --nb-iy:17px; --nb-badge:#b34b4b; --nb-ring:#fffff4;
+    --nb-pw:13px; --nb-ph:2px; --nb-pr:2px; --nb-piy:11px;
+    --nb-seg-bg:#fffff4; --nb-seg-bc:#2b2d22; --nb-seg-bw:2px 2px 4px 2px; --nb-seg-sh:none; --nb-seg-ink:rgba(43,45,34,0.7); --nb-seg-on-bg:rgba(90,144,152,0.16); --nb-seg-on-ink:#2b2d22; --nb-seg-on-sh:none; }
 [data-bar="farbig"] { --nb-bg:#668f90; --nb-bc:transparent; --nb-bw:0; --nb-sh:0 1px 2px rgba(0,0,0,0.10), 0 4px 10px -2px rgba(0,0,0,0.13), 0 12px 24px -8px rgba(0,0,0,0.18); --nb-ink:#fffff4; --nb-act:var(--nb-bg); --nb-ind:#fffff4; --nb-indop:1; --nb-indsh:0 1px 2px rgba(0,0,0,0.16), 0 3px 6px -1px rgba(0,0,0,0.22);
     --nb-iw:54px; --nb-ih:34px; --nb-ir:17px; --nb-iy:0px; --nb-badge:#e5584f; --nb-ring:var(--nb-bg);
     --nb-pw:28px; --nb-ph:17px; --nb-pr:9px; --nb-piy:0px;
     --nb-seg-bg:var(--nb-bg); --nb-seg-bc:transparent; --nb-seg-bw:0; --nb-seg-sh:0 1px 2px rgba(0,0,0,0.12), 0 3px 8px -2px rgba(0,0,0,0.18); --nb-seg-ink:rgba(255,255,244,0.86); --nb-seg-on-bg:#fffff4; --nb-seg-on-ink:var(--nb-bg); --nb-seg-on-sh:0 2px 6px rgba(0,0,0,0.25); }
+/* Ampel-Leiste: aktive Seite als feiner Strich unter dem Icon (Farbe der Ampel) statt Kreis; aktives Icon in der Ampelfarbe statt Weiss */
+html[data-bar="original"] #navActiveIndicator { width: 18px !important; height: 3px !important; border-radius: 2px !important; top: calc(50% + 17px) !important; box-shadow: none !important; }
+html[data-bar="original"] .fixed-action-bar .icon-pill-wrap.is-active-page .icon-pill-mask { background: var(--bar-accent) !important; }
+/* Retro: violette Leisten mit dicker Tuschekante und hartem Schatten, aktive Seite als gelber Strich */
+[data-bar="retro"] { --nb-bg:#552cb7; --nb-bc:#1d1838; --nb-bw:3px; --nb-sh:0 4px 0 #1d1838; --nb-pad:10.5px 0; --nb-ink:#fff5dc; --nb-act:#ffc567; --nb-ind:#ffc567; --nb-indop:1; --nb-indsh:none;
+    --nb-iw:18px; --nb-ih:3px; --nb-ir:2px; --nb-iy:17px; --nb-badge:#fd5a46; --nb-ring:#552cb7;
+    --nb-pw:13px; --nb-ph:2px; --nb-pr:2px; --nb-piy:11px;
+    --nb-seg-bg:#552cb7; --nb-seg-bc:#1d1838; --nb-seg-bw:3px; --nb-seg-sh:0 3px 0 #1d1838; --nb-seg-ink:rgba(255,245,220,0.72); --nb-seg-on-bg:rgba(255,245,220,0.18); --nb-seg-on-ink:#fff5dc; --nb-seg-on-sh:none; }
 /* Blinky: Tiefsee-Tuerkis-Leisten mit cremefarbenen Symbolen, aktive Seite in Honiggelb (#1f4d51 = Tinte auf Honig, bleibt auch in der dunklen Palette dunkel) */
-[data-bar="blinky"] { --nb-bg:#2f6f73; --nb-bc:#1f4d51; --nb-bw:2px 2px 4px 2px; --nb-sh:none; --nb-ink:#fdfbee; --nb-act:#1f4d51; --nb-ind:#e4b04a; --nb-indop:1; --nb-indsh:none;
-    --nb-iw:54px; --nb-ih:34px; --nb-ir:17px; --nb-iy:0px; --nb-badge:#e5584f; --nb-ring:#2f6f73;
-    --nb-pw:28px; --nb-ph:17px; --nb-pr:9px; --nb-piy:0px;
-    --nb-seg-bg:#2f6f73; --nb-seg-bc:#1f4d51; --nb-seg-bw:2px 2px 4px 2px; --nb-seg-sh:none; --nb-seg-ink:rgba(253,251,238,0.86); --nb-seg-on-bg:#e4b04a; --nb-seg-on-ink:#1f4d51; --nb-seg-on-sh:none; }
+[data-bar="blinky"] { --nb-bg:#2f6f73; --nb-bc:#1f4d51; --nb-bw:2px 2px 4px 2px; --nb-sh:none; --nb-pad:10.5px 0; --nb-ink:#fdfbee; --nb-act:#e4b04a; --nb-ind:#e4b04a; --nb-indop:1; --nb-indsh:none;
+    --nb-iw:18px; --nb-ih:3px; --nb-ir:2px; --nb-iy:17px; --nb-badge:#e5584f; --nb-ring:#2f6f73;
+    --nb-pw:13px; --nb-ph:2px; --nb-pr:2px; --nb-piy:11px;
+    --nb-seg-bg:#2f6f73; --nb-seg-bc:#1f4d51; --nb-seg-bw:2px 2px 4px 2px; --nb-seg-sh:none; --nb-seg-ink:rgba(253,251,238,0.7); --nb-seg-on-bg:rgba(253,251,238,0.16); --nb-seg-on-ink:#fdfbee; --nb-seg-on-sh:none; }
 html[data-bar]:not([data-bar="original"]) :is(.fixed-top-bar, .fixed-action-bar, .fab-pill, .fab-neck) { --bar-bg-color: var(--nb-bg); --bar-accent: var(--nb-ink) !important; --bar-ind: var(--nb-ind); --bar-ind-op: var(--nb-indop); --bar-act: var(--nb-act); --bar-ink: var(--nb-inkt, var(--nb-ink)); --bar-badge: var(--nb-badge); --bar-badge-ring: var(--nb-ring); }
 html[data-bar]:not([data-bar="original"]) :is(.fixed-action-bar, .fab-pill, .fixed-top-bar:not(:has(.top-split)), .top-split > *) { border: solid var(--nb-bc); border-width: var(--nb-bw); box-shadow: var(--nb-sh); }
 /* Ampel (Original): gleiche gestaffelte Schattierung, damit Leisten, Pillen und Umschalter als Ebene ueber dem Hintergrund liegen */
@@ -5039,8 +5065,24 @@ const COLOR_THEMES = {
         swatch: ["#4f9a82", "#e4b04a", "#d9824f", "#c9544a", "#7f9fb0"],
         hue: [[0, 0]], hueFold: false, cs: 1, lk: 1, lo: 0, nh: 0, nc: 0,
         sigma: 0.05, reg: 0.001,
-        keep: ["#2f6f73", "#1f4d51", "#e4b04a"],
+        keep: ["#2f6f73", "#1f4d51", "#e4b04a", "#3d8288"],
         get anchors() { return _thBlinkyAmpelAnchors(); }
+    },
+    signal: {
+        label: "Signal (Karten)", desc: "Für den Kachel-Stil Karte: Jade, Honig, Kupfer, Korall, Kein MHD in Graublau. Der Ring hat die Farbe des Kachel-Fußes",
+        swatch: ["#4f9a82", "#e4b04a", "#d9824f", "#d9604f", "#7f9fb0"],
+        hue: [[0, 0]], hueFold: false, cs: 1, lk: 1, lo: 0, nh: 0, nc: 0,
+        sigma: 0.05, reg: 0.001,
+        keep: ["#2f6f73", "#1f4d51", "#e4b04a", "#3d8288"],
+        get anchors() { return _thBlinkyAmpelAnchors(true); }
+    },
+    retro: {
+        label: "Retro", desc: "Retro-Palette: Grün, Sonnengelb, Korallrot, Blau und Violett auf warmem Creme mit tiefblauer Tinte",
+        swatch: ["#00995e", "#ffc567", "#fd5a46", "#058cd7", "#552cb7"],
+        hue: [[0, 0]], hueFold: false, cs: 1, lk: 1, lo: 0, nh: 0, nc: 0,
+        sigma: 0.05, reg: 0.001,
+        keep: ["#552cb7", "#1d1838", "#fff5dc", "#ffc567", "#fffdf5"],
+        get anchors() { return _thRetroAnchors(); }
     },
     tiefsee: {
         label: "Tiefsee (dunkel)", desc: "Dunkle Palette: Karten und Popups in Blautürkis, Schrift und Symbole in Creme. Kacheln behalten ihre Ampel-Farben",
@@ -5054,15 +5096,36 @@ const COLOR_THEMES = {
 function _thLerp3(a, b, t) { return a.map((v, i) => v + (b[i] - v) * t); }
 function _thRgbHex(c) { return "#" + c.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join(""); }
 // Blinky-Ampel: die bisherige Ampel-Strecke (Gruen -> Amber -> Rot, siehe getColor) wird Schritt fuer Schritt auf Jade -> Honig -> Kupfer -> Korall abgebildet
-function _thBlinkyAmpelAnchors() {
+function _thBlinkyAmpelAnchors(ringAsBand) {
     const SG = [82, 129, 83], SA = [219, 158, 54], SR = [179, 75, 75];
-    const TG = _thHex("#4f9a82"), TA = _thHex("#e4b04a"), TK = _thHex("#d9824f"), TR = _thHex("#c9544a");
+    const TG = _thHex("#4f9a82"), TA = _thHex("#e4b04a"), TK = _thHex("#d9824f"), TR = _thHex("#d9604f");
     let out = [], N = 10;
     for (let i = 0; i <= N; i++) { let t = i / N; out.push([_thRgbHex(_thLerp3(SG, SA, t)), _thRgbHex(_thLerp3(TG, TA, t))]); }
     for (let i = 1; i <= N; i++) { let t = i / N; out.push([_thRgbHex(_thLerp3(SA, SR, t)), _thRgbHex(t < 0.5 ? _thLerp3(TA, TK, t * 2) : _thLerp3(TK, TR, (t - 0.5) * 2))]); }
-    out.push(["#5a9098", "#7f9fb0"], ["#2f585e", "#4d6978"], ["#446d74", "#5f7f8f"]);   // Kein MHD (Kachel, Ring tief, Ring original)
-    out.push(["#2b4f2c", "#295e4a"], ["#3e613e", "#366f5c"], ["#712222", "#7a2c27"], ["#863838", "#8a3a33"]);   // Ring: frisch / abgelaufen
+    out.push(["#5a9098", "#7f9fb0"]);   // Kein MHD (Kachel)
+    if (ringAsBand) out.push(["#2f585e", "#7f9fb0"], ["#2b4f2c", "#4f9a82"], ["#976208", "#e4b04a"], ["#712222", "#d9604f"]);   // Ring in Fussfarbe (Karten-Stil)
+    else out.push(["#2f585e", "#4d6978"], ["#446d74", "#5f7f8f"], ["#2b4f2c", "#295e4a"], ["#3e613e", "#366f5c"], ["#712222", "#7a2c27"], ["#863838", "#8a3a33"]);   // Ring: dunkler als die Kachel
     out.push(["#455c40", "#2e6a58"], ["#7e4435", "#8a3f38"]);   // Leisten-Symbolfarbe der Ampel
+    return out;
+}
+// Retro: Ampel-Strecke auf Gruen -> Sonnengelb -> Korallrot, Kein MHD in Blau; Papier warm-creme, Tinte tiefblau, Akzente aus der Retro-Palette
+function _thRetroAnchors() {
+    const SG = [82, 129, 83], SA = [219, 158, 54], SR = [179, 75, 75];
+    const TG = _thHex("#00995e"), TA = _thHex("#ffc567"), TR = _thHex("#fd5a46");
+    let out = [], N = 10;
+    for (let i = 0; i <= N; i++) { let t = i / N; out.push([_thRgbHex(_thLerp3(SG, SA, t)), _thRgbHex(_thLerp3(TG, TA, t))]); }
+    for (let i = 1; i <= N; i++) { let t = i / N; out.push([_thRgbHex(_thLerp3(SA, SR, t)), _thRgbHex(_thLerp3(TA, TR, t))]); }
+    out.push(["#5a9098", "#058cd7"], ["#2f585e", "#058cd7"]);   // Ring in Fussfarbe (Retro nutzt immer den Karten-Look)
+    out.push(["#2b4f2c", "#00995e"], ["#976208", "#ffc567"], ["#712222", "#fd5a46"]);
+    out.push(["#455c40", "#00704a"], ["#7e4435", "#b83a2a"]);
+    out.push(["#4f7cac", "#058cd7"], ["#6f87b3", "#3a8fd0"], ["#86689a", "#552cb7"], ["#ffd23f", "#ffc567"]);
+    COLOR_THEMES.lodge.anchors.forEach(p => {
+        let lab = _thToLab.apply(null, _thHex(p[0])), L = lab[0], C = Math.hypot(lab[1], lab[2]);
+        if (C >= 0.08 || (L > 0.45 && L < 0.70)) return;
+        if (out.some(o => o[0] === p[0])) return;
+        if (L >= 0.70) out.push([p[0], _thRgbHex(_thFromLab(Math.min(0.995, L + 0.02), 0.008, 0.022))]);
+        else out.push([p[0], _thRgbHex(_thFromLab(L * 0.8, 0.012, -0.045))]);
+    });
     return out;
 }
 // Tiefsee: Papier-/Hintergrundtoene (hell) werden dunkles Blautuerkis, Tinte (dunkel) wird Creme; Kachelfarben und Akzente bleiben (Identitaets-Anker)
@@ -5519,6 +5582,8 @@ const PAGE_BG_COLORS = {
     blau:      { g: "Kräftig (Kachelfarben)", label: "Blau", desc: "Wie Konto und Rezept-Foto", color: "#4f7cac" },
     tuerkis:   { g: "Kräftig (Kachelfarben)", label: "Türkis", desc: "Wie Kacheln ohne MHD", color: "#5a9098" },
     nebel:     { g: "Blinky", label: "Nebel", desc: "Sehr hell, leicht kühl getönt: lässt den Ampel-Kacheln die Bühne", color: "#d6e6e3", light: true },
+    teal:      { g: "Blinky", label: "Tiefes Türkis", desc: "Bühne für weiße Karten", color: "#3d8288" },
+    retro:     { g: "Blinky", label: "Retro-Gelb", desc: "Warmes Sonnengelb wie die Retro-Palette", color: "#ffc567", light: true },
     tiefsee:   { g: "Blinky", label: "Tiefsee", desc: "Dunkles Blautürkis, passend zur dunklen Palette", color: "#203a40" }
 };
 function _pageBgRgb() {
@@ -11007,6 +11072,49 @@ function setPlaceholderStyle(k) {
     let g = document.getElementById("placeholderGrid"); if (g) g.innerHTML = _placeholderGridHtml();
 }
 applyPlaceholderStyle();
+
+// ===== Kachel-Stil (Einstellungen > Design > Kacheln): Farbe der Produkt-Kacheln; CSS siehe "Kachel-Stil" =====
+const TILE_STYLES = {
+    farbig: { label: "Farbig (Original)", desc: "Kachel komplett in der Ampelfarbe, Schrift in Weiß" },
+    karte:  { label: "Karte",             desc: "Weiße Karte mit Bild und Name in Tinte, unten ein Fuß in der Ampelfarbe mit der Zeit. Farbe bedeutet nur noch Signal" },
+    retro:  { label: "Retro",             desc: "Wie Karte, dazu dicke Tuschekante und harter Schatten wie ein Sticker" }
+};
+let tileStyle = "farbig";
+try { let _ts = localStorage.getItem("nowa_tile_style"); if (_ts && TILE_STYLES[_ts]) tileStyle = _ts; } catch (e) {}
+function applyTileStyle() {
+    document.documentElement.setAttribute("data-tile", TILE_STYLES[tileStyle] ? tileStyle : "farbig");
+    try { localStorage.setItem("nowa_tile_style", TILE_STYLES[tileStyle] ? tileStyle : "farbig"); } catch (e) {}
+}
+function tileStylePreviewHtml(k) {
+    let bg = k === "retro" ? "#ffc567" : "#3d8288";
+    let t = (c, n, d) => `<div class="product" style="background:${c}; --tile-border-color:transparent;"><div class="tp-ring" style="border-color:${c};"></div><div class="product-name">${n}</div><div class="pantry-timer">${d}</div></div>`;
+    return `<div class="tile-prev" data-tile="${k}" style="background:${bg}; pointer-events:none;">${t("#528153", "Apfel", "9d")}${t("#db9e36", "Milch", "3d")}${t("#b34b4b", "Joghurt", "0d")}</div>`;
+}
+function _tileGridHtml() {
+    return Object.keys(TILE_STYLES).map(k => {
+        let on = k === tileStyle || (k === "farbig" && !TILE_STYLES[tileStyle]);
+        return `<button type="button" onclick="setTileStyle('${k}')" style="display:flex; flex-direction:column; align-items:stretch; gap:7px; padding:9px 10px 10px; border-radius:16px; cursor:pointer; font-family:inherit; box-sizing:border-box; text-align:left; border:2.5px solid #2b2d22; border-bottom-width:5px; background:${on ? "#ffd23f" : "#fffff4"};">
+            <span style="font-size:12.5px; font-weight:900; color:#2b2d22; line-height:1.15;">${on ? "✓ " : ""}${TILE_STYLES[k].label}</span>
+            <span style="font-size:10.5px; font-weight:700; line-height:1.3; color:#2b2d22; opacity:0.62;">${TILE_STYLES[k].desc}</span>
+            ${tileStylePreviewHtml(k)}</button>`;
+    }).join("");
+}
+function openTileStylePicker() {
+    let old = document.getElementById("tileStyleOverlay"); if (old) old.remove();
+    createModal(`<div class="custom-modal-box" style="--modal-accent:#2b2d22; max-width:350px; max-height:86vh; overflow-y:auto; padding:20px 14px 16px; background:#dbdcc2; border:2.5px solid #2b2d22; border-bottom-width:6px;">
+        ${modalCloseX("document.getElementById('tileStyleOverlay').remove()")}
+        <div style="font-size:17px; font-weight:900; color:#2b2d22; padding:2px 0 3px;">Kacheln</div>
+        <div style="margin:0 auto 14px; max-width:280px; font-size:11.5px; font-weight:700; line-height:1.4; color:#2b2d22; opacity:0.6;">So sehen die Produkt-Kacheln im Vorrat aus. Vorschau auf Beispielfarben. Antippen zum Auswählen.</div>
+        <div id="tileStyleGrid" style="display:flex; flex-direction:column; gap:9px;">${_tileGridHtml()}</div>
+    </div>`, { id: "tileStyleOverlay", closeOnBackdrop: true });
+}
+function setTileStyle(k) {
+    if (!TILE_STYLES[k]) return;
+    tileStyle = k;
+    applyTileStyle();
+    let g = document.getElementById("tileStyleGrid"); if (g) g.innerHTML = _tileGridHtml();
+}
+applyTileStyle();
 // ===== Seitenhintergrund: Farbauswahl =====
 function _pageBgGridHtml() {
     let day = 86400000, lastG = "";
@@ -11075,25 +11183,31 @@ function setNavIconStyle(k) {
 const DESIGN_PRESETS = {
     standard: { label: "Standard", desc: "Das Standard-Design von Nowa", s: {
         colorTheme: "original", barStyle: "konturen", pantryHeaderStyle: "swatch2", ringStyle: "deep", pantryIconStyle: "default",
-        expiredIconStyle: "text", addTileStyle: "glas", placeholderStyle: "deepstripe", pageBgStyle: "auto", navIconStyle: "ampel" } },
+        expiredIconStyle: "text", addTileStyle: "glas", placeholderStyle: "deepstripe", tileStyle: "farbig", pageBgStyle: "auto", navIconStyle: "ampel" } },
     "nebel-a": { label: "A · Nebel", desc: "Nur der Hintergrund ändert sich: sehr helles, kühles Nebelgrau-Türkis, Leisten als Karte (cremeweiß mit Tuschekante). Kleinste Änderung", s: {
-        colorTheme: "original", barStyle: "karte", pantryHeaderStyle: "swatch2", ringStyle: "deep", pantryIconStyle: "default",
-        expiredIconStyle: "text", addTileStyle: "glas", placeholderStyle: "deepstripe", pageBgStyle: "nebel", navIconStyle: "leisten" } },
+        colorTheme: "original", barStyle: "original", pantryHeaderStyle: "swatch2", ringStyle: "deep", pantryIconStyle: "default",
+        expiredIconStyle: "text", addTileStyle: "glas", placeholderStyle: "deepstripe", tileStyle: "farbig", pageBgStyle: "nebel", navIconStyle: "ampel" } },
     "nebel-b": { label: "B · Nebel + Blinky-Leisten", desc: "Heller Nebel-Hintergrund, Leisten in Tiefsee-Türkis mit cremefarbenen Symbolen, aktive Seite Honiggelb", s: {
-        colorTheme: "original", barStyle: "blinky", pantryHeaderStyle: "swatch2", ringStyle: "deep", pantryIconStyle: "default",
-        expiredIconStyle: "text", addTileStyle: "glas", placeholderStyle: "deepstripe", pageBgStyle: "nebel", navIconStyle: "leisten" } },
+        colorTheme: "original", barStyle: "original", pantryHeaderStyle: "swatch2", ringStyle: "deep", pantryIconStyle: "default",
+        expiredIconStyle: "text", addTileStyle: "glas", placeholderStyle: "deepstripe", tileStyle: "farbig", pageBgStyle: "nebel", navIconStyle: "ampel" } },
     "nebel-c": { label: "C · Nebel + neue Ampel", desc: "Heller Nebel-Hintergrund, Karten-Leisten und eine neue Ampel: Jade, Honig, Kupfer, Korall; Kein MHD in Graublau", s: {
-        colorTheme: "blinkyampel", barStyle: "karte", pantryHeaderStyle: "swatch2", ringStyle: "deep", pantryIconStyle: "default",
-        expiredIconStyle: "text", addTileStyle: "glas", placeholderStyle: "deepstripe", pageBgStyle: "nebel", navIconStyle: "leisten" } },
+        colorTheme: "blinkyampel", barStyle: "original", pantryHeaderStyle: "swatch2", ringStyle: "deep", pantryIconStyle: "default",
+        expiredIconStyle: "text", addTileStyle: "glas", placeholderStyle: "deepstripe", tileStyle: "farbig", pageBgStyle: "nebel", navIconStyle: "ampel" } },
     "nebel-bc": { label: "B + C · Blinky (Empfehlung)", desc: "Nebel-Hintergrund, Blinky-Leisten und die neue Ampel zusammen", s: {
-        colorTheme: "blinkyampel", barStyle: "blinky", pantryHeaderStyle: "swatch2", ringStyle: "deep", pantryIconStyle: "default",
-        expiredIconStyle: "text", addTileStyle: "glas", placeholderStyle: "deepstripe", pageBgStyle: "nebel", navIconStyle: "leisten" } },
+        colorTheme: "blinkyampel", barStyle: "original", pantryHeaderStyle: "swatch2", ringStyle: "deep", pantryIconStyle: "default",
+        expiredIconStyle: "text", addTileStyle: "glas", placeholderStyle: "deepstripe", tileStyle: "farbig", pageBgStyle: "nebel", navIconStyle: "ampel" } },
     tiefsee: { label: "D · Tiefsee (dunkel)", desc: "Dunkle Variante: Blautürkis-Hintergrund, Blinky-Leisten, Schrift in Creme. Größter Umbau, noch am wenigsten poliert", s: {
         colorTheme: "tiefsee", barStyle: "blinky", pantryHeaderStyle: "swatch2", ringStyle: "deep", pantryIconStyle: "default",
-        expiredIconStyle: "text", addTileStyle: "glas", placeholderStyle: "deepstripe", pageBgStyle: "tiefsee", navIconStyle: "leisten" } }
+        expiredIconStyle: "text", addTileStyle: "glas", placeholderStyle: "deepstripe", tileStyle: "farbig", pageBgStyle: "tiefsee", navIconStyle: "leisten" } },
+    "karte-teal": { label: "E · Karten auf Türkis", desc: "Tiefes Türkis als Bühne, weiße Karten mit Ampel-Fuß (Jade, Honig, Kupfer, Korall). Schrift in Tinte, Farbe nur als Signal. Leisten als Karte", s: {
+        colorTheme: "signal", barStyle: "original", pantryHeaderStyle: "swatch2", ringStyle: "deep", pantryIconStyle: "default",
+        expiredIconStyle: "text", addTileStyle: "glas", placeholderStyle: "deepstripe", tileStyle: "karte", pageBgStyle: "teal", navIconStyle: "ampel" } },
+    "retro": { label: "F · Retro", desc: "Sonnengelb, weiße Sticker-Karten mit dicker Kante und hartem Schatten, Signalfarben aus der Retro-Palette (Grün, Gelb, Koralle, Blau), violette Leisten", s: {
+        colorTheme: "retro", barStyle: "original", pantryHeaderStyle: "swatch2", ringStyle: "deep", pantryIconStyle: "default",
+        expiredIconStyle: "text", addTileStyle: "glas", placeholderStyle: "deepstripe", tileStyle: "retro", pageBgStyle: "retro", navIconStyle: "ampel" } }
 };
 function _designState() {
-    return { colorTheme, barStyle, pantryHeaderStyle, ringStyle, pantryIconStyle, expiredIconStyle: expiredIconKey(expiredIconStyle), addTileStyle, placeholderStyle,
+    return { colorTheme, barStyle, pantryHeaderStyle, ringStyle, pantryIconStyle, expiredIconStyle: expiredIconKey(expiredIconStyle), addTileStyle, placeholderStyle, tileStyle: TILE_STYLES[tileStyle] ? tileStyle : "farbig",
              pageBgStyle: PAGE_BG_COLORS[pageBgStyle] ? pageBgStyle : "auto", navIconStyle: NAV_ICON_STYLES[navIconStyle] ? navIconStyle : "ampel" };
 }
 function currentDesignPresetKey() {
@@ -11111,6 +11225,7 @@ function applyDesignPreset(k) {
     expiredIconStyle = s.expiredIconStyle;
     addTileStyle = s.addTileStyle; applyAddTileStyle();
     placeholderStyle = s.placeholderStyle; applyPlaceholderStyle();
+    tileStyle = s.tileStyle || "farbig"; applyTileStyle();
     pageBgStyle = s.pageBgStyle;
     navIconStyle = s.navIconStyle; applyNavIconStyle();
     applyColorTheme(s.colorTheme);
@@ -11125,7 +11240,7 @@ function _designPresetGridHtml() {
     let html = Object.keys(DESIGN_PRESETS).map(k => {
         let p = DESIGN_PRESETS[k], s = p.s, on = k === cur;
         let chips = [["Farbpalette", lab(COLOR_THEMES, s.colorTheme)], ["Leisten", lab(BAR_STYLES, s.barStyle)], ["Kopfbereich", lab(PANTRY_HEADER_STYLES, s.pantryHeaderStyle)],
-                     ["Ring", lab(RING_STYLES, s.ringStyle)], ["Icons", lab(PANTRY_ICON_STYLES, s.pantryIconStyle)], ["Hintergrund", lab(PAGE_BG_COLORS, s.pageBgStyle)], ["Nav-Icons", lab(NAV_ICON_STYLES, s.navIconStyle)]]
+                     ["Ring", lab(RING_STYLES, s.ringStyle)], ["Icons", lab(PANTRY_ICON_STYLES, s.pantryIconStyle)], ["Kacheln", lab(TILE_STYLES, s.tileStyle)], ["Hintergrund", lab(PAGE_BG_COLORS, s.pageBgStyle)], ["Nav-Icons", lab(NAV_ICON_STYLES, s.navIconStyle)]]
             .filter(c => c[1]).map(c => `<span style="font-size:10px; font-weight:800; color:#2b2d22; background:rgba(43,45,34,0.08); border-radius:8px; padding:3px 7px;">${c[0]}: ${c[1]}</span>`).join("");
         return `<div role="button" tabindex="0" onclick="setDesignPreset('${k}')" style="display:flex; flex-direction:column; align-items:stretch; gap:7px; padding:11px 11px 12px; border-radius:16px; cursor:pointer; font-family:inherit; box-sizing:border-box; text-align:left; border:2.5px solid #2b2d22; border-bottom-width:5px; background:${on ? "#ffd23f" : "#fffff4"};">
             <span style="font-size:14px; font-weight:900; color:#2b2d22; line-height:1.15;">${p.label}${on ? " ✓" : ""}</span>
@@ -11280,6 +11395,7 @@ const BAR_STYLES = {
     "kontur-blau":    { label: "Konturen Blau",    desc: "Wie Konturen, aber Icons und Strich in Blau" },
     karte:      { label: "Karte",       desc: "Cremeweiß mit kräftiger Tuschekante wie die Buttons der App. Aktive Seite: Türkis-Kachel" },
     farbig:     { label: "Farbig",      desc: "Leiste in gedämpftem Salbei-Türkis mit weichem Schatten, Icons in Creme. Aktive Seite: Cremekapsel" },
+    retro:      { label: "Retro",       desc: "Violette Leisten mit dicker Tuschekante und hartem Schatten, Symbole in Creme. Aktive Seite: gelber Strich" },
     blinky:     { label: "Blinky",      desc: "Leisten in Tiefsee-Türkis mit feiner dunkler Kante, Symbole in Creme. Aktive Seite: Honiggelb" }
 };
 function applyBarStyle() {
@@ -18165,6 +18281,11 @@ function openSettingsMenu() {
                     <span style="flex:1; font-size:12px;">Add-items-Kacheln<span class="settings-row-sub">${ADD_TILE_STYLES[addTileStyle] ? ADD_TILE_STYLES[addTileStyle].label : "Glas · Farbig"}</span></span>
                     <span style="opacity:0.3; font-size:14px;">&rsaquo;</span>
                 </button>
+                <button class="settings-row-btn" onclick="closeSettingsSheet(); openTileStylePicker();" style="padding:8px 10px;">
+                    ${badge("data:image/png;base64,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", 24, COL_DESIGN)}
+                    <span style="flex:1; font-size:12px;">Kacheln<span class="settings-row-sub">${TILE_STYLES[tileStyle] ? TILE_STYLES[tileStyle].label : "Farbig (Original)"}</span></span>
+                    <span style="opacity:0.3; font-size:14px;">&rsaquo;</span>
+                </button>
                 <button class="settings-row-btn" onclick="closeSettingsSheet(); openPlaceholderPicker();" style="padding:8px 10px;">
                     ${badge("data:image/png;base64,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", 24, COL_DESIGN)}
                     <span style="flex:1; font-size:12px;">Platzhalter ohne Bild<span class="settings-row-sub">${PLACEHOLDER_STYLES[placeholderStyle] ? PLACEHOLDER_STYLES[placeholderStyle].label : "Mulde gestreift tief"}</span></span>
@@ -20714,6 +20835,19 @@ function setPantryPhotoInline(uid, file) {
         saveCustomData();
         renderPantryTile(uid);
         updateMhdTileInline(uid);
+        // Info-Popup: Bild sofort in der Kachel zeigen (nicht erst nach "Änderungen akzeptieren")
+        try {
+            let tile = document.querySelector('.mhd-edit-tile[data-uid="' + uid + '"]');
+            if (tile) {
+                let src = imgSrcFor(dataUrl), im = tile.querySelector("img[data-photo-id]");
+                if (im) { im.src = src; im.setAttribute("data-photo-id", photoRefId(dataUrl) || ""); im.classList.remove("photo-loading"); }
+                else {
+                    let ph = tile.querySelector(".no-image-placeholder");
+                    if (ph) { let n = document.createElement("img"); n.src = src; n.setAttribute("data-photo-id", ""); ph.replaceWith(n); }
+                }
+                tile.querySelectorAll("label[title='Bild hinzufügen']").forEach(l => l.title = "Bild ändern");
+            }
+        } catch (e) { console.warn("Info-Kachel konnte das Bild nicht sofort zeigen:", e); }
     }).catch(err => {
         console.warn("Bild konnte nicht verarbeitet werden:", err);
         showToast("Foto konnte nicht hinzugefügt werden");
@@ -32596,8 +32730,11 @@ function addCustomItemToSortiment(uid) {
     try { closeMHD(); } catch (e) {}
     document.getElementById("mhdInfoOverlay")?.remove();
     sortimentReturn = null;
-    pendingSortimentItem = { name: it.name, image: it.image || null, shelfLifeObj: {}, allowedList: [], openedShelfLifeObj: {}, qualityList: [], qualityListOpened: [], spoilageText: "", cutOption: false, cutShelfLifeObj: {} };
-    openSortimentErweitern();
+    pendingSortimentItem = { name: it.name, image: it.image || null, shelfLifeObj: {}, allowedList: [], openedShelfLifeObj: {}, qualityList: [], qualityListOpened: [], spoilageText: "", cutOption: false, cutShelfLifeObj: {}, openEditor: true };
+    // Haltbarkeit des Lagerorts aus der Pantry uebernehmen, falls bekannt
+    if (it.storage && it.manualDays > 0) { pendingSortimentItem.shelfLifeObj[it.storage] = Math.round(it.manualDays); pendingSortimentItem.allowedList = [it.storage]; }
+    currentPage = "sortiment";
+    chooseSortimentCategory();   // danach oeffnet der moderne Produkt-Editor (Haltbarkeit, Nährwerte, Preis ...)
 }
 
 function openSortimentErweitern() {
@@ -33372,6 +33509,7 @@ function finalizeSortimentCategory(category, mode) {
     saveCustomData(); applyCustomData(); pendingSortimentItem = null;
     showToast(`"${productEntry.name}" wurde dem Sortiment hinzugefügt.`);
     if (_sortimentReturnToReview(productEntry.name)) return;
+    if (item.openEditor) { openEditLifetime(category, mode || null, productEntry.name); return; }
     openShopCategory(category);
 }
 
