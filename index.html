@@ -215,7 +215,7 @@ html[data-pgl="1"] #app h1 img { filter: brightness(0) opacity(0.82) !important;
 .rd-ntab { width: 40px; background: #fffff4; border-radius: 5px; padding: 4px; display: flex; flex-direction: column; gap: 3px; box-sizing: border-box; }
 .rd-ntab i { display: block; height: 3px; border-radius: 2px; background: rgba(43,45,34,.35); }
 .rd-ntab i:nth-child(odd) { width: 70%; }
-.rd-nok { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; background: #528153; color: #fff; font-size: 12px; font-weight: 900; display: none; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #fffff4; }
+.rd-nok { position: absolute; bottom: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; background: #528153; color: #fff; font-size: 12px; font-weight: 900; display: none; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #fffff4; }
 .rd-ntile.on .rd-nok { display: flex; }
 .rd-nname { font-size: 14px; font-weight: 800; margin-top: 4px; line-height: 1.2; overflow-wrap: anywhere; }
 .rd-nqty { font-size: 11.5px; font-weight: 700; opacity: .7; }
@@ -33762,7 +33762,7 @@ function showMHD(uid) {
         </div>`;
     let { r: mar, g: mag, b: mab } = hexToRgbTriplet(mhdAccent);
     let mhdCardBg = `rgb(${Math.round(mar * 0.08 + 255 * 0.92)}, ${Math.round(mag * 0.08 + 255 * 0.92)}, ${Math.round(mab * 0.08 + 255 * 0.92)})`;
-    let _mhdPanelCss = `background: ${mhdCardBg}; color: #333; padding: 20px; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.14); text-align: left; max-width: 300px; width: 100%; margin:10px auto 0;`;
+    let _mhdPanelCss = `background: ${mhdCardBg}; color: #333; padding: 20px; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.14); text-align: left; max-width: 340px; width: 100%; box-sizing: border-box; margin:10px auto 0;`;
     let html = `
             ${carouselHtml}
             ${dotsHtml}
@@ -33849,7 +33849,7 @@ function showMHD(uid) {
         _softBox.innerHTML = html;
         _softBox.querySelectorAll(".mhd-panel").forEach(el => el.classList.add("mhd-soft-in"));
     } else createModal(
-        `<div class="custom-modal-box" onclick="mhdBoxBackgroundClick(event, this)" style="max-width:460px; width:94%; padding-top:22px; padding-left:14px; padding-right:14px; max-height:92vh; max-height:92dvh; text-align:center; position:relative; background:transparent; box-shadow:none; border:none;">${html}</div>`,
+        `<div class="custom-modal-box" onclick="mhdBoxBackgroundClick(event, this)" style="max-width:460px; width:94%; padding-top:22px; padding-left:14px; padding-right:14px; max-height:92vh; max-height:92dvh; overflow-x:hidden; text-align:center; position:relative; background:transparent; box-shadow:none; border:none;">${html}</div>`,
         { id: "mhdInfoOverlay", closeOnBackdrop: true, onClose: closeMHD, growFromRect, growTargetSelector }
     );
 
@@ -47839,25 +47839,26 @@ function openRecipeDetail(index, backTo) {
                 let lbl = pv.pick.i === 0 ? "Original" : (pv.count > 2 ? "Alternative " + pv.pick.i + "/" + (pv.count - 1) : "Alternative");
                 alt = `<div class="rd-nsw" role="group" aria-label="Variante wählen"><button type="button" class="rd-nsw-b" onclick="event.stopPropagation(); _recipeAltStep(${index}, ${idx}, -1)" aria-label="vorherige Variante">${chevL}</button><div class="rd-nsw-mid"><span class="rd-nsw-l">${lbl}</span><span class="rd-nsw-seg">${pv.evals.map((e, k) => `<i class="${k === pv.pick.i ? "on" : ""}"></i>`).join("")}</span></div><button type="button" class="rd-nsw-b" onclick="event.stopPropagation(); _recipeAltStep(${index}, ${idx}, 1)" aria-label="nächste Variante">${chevR}</button></div>`;
             }
+            let nw = !!(has && ni && ni.noWeight && ni.noWeight.indexOf(nm) !== -1);
             let swap = (altAnim && altAnim.idx === idx) ? (altAnim.dir < 0 ? " sw-in-prev" : " sw-in-next") : "";
             return `<div class="rd-ntile${has ? " on" : ""}${fresh === idx ? " pop" : ""}${swap}" data-ni="${idx}" ${pv.count > 1 ? `data-alt="1" data-idx="${idx}"` : ""} style="--pc:${NUT_SRC_STYLE[_ingNutSource(raw, nm)].dot};" role="button" tabindex="0" onclick="if (Date.now() - (window._rdSwipeAt || 0) > 350) openRecipeIngNut(${index}, ${idx})">
                 <button type="button" class="rd-nx" onclick="event.stopPropagation(); _rdNutHidOff(${index}, ${idx})" title="Nicht mitrechnen" aria-label="${esc(nm)} nicht mitrechnen">${eyeOff}</button>
                 <span class="rd-nbox"><span class="rd-ntab"><i></i><i></i><i></i><i></i><i></i></span><span class="rd-nlaser"></span><span class="rd-nok">✓</span></span>
                 <span class="rd-nname">${esc(nm)}</span>${qty ? `<span class="rd-nqty">${qty}</span>` : ""}
-                <span class="rd-nstat">${has ? (kc !== null ? kc + " kcal / 100 g" : "Werte vorhanden") : "Tabelle scannen"}${(has && ni && ni.noWeight && ni.noWeight.indexOf(nm) !== -1) ? '<span style="display:block; font-size:10.5px; font-weight:700; opacity:.85; margin-top:2px;">zählt nicht mit: Gewicht pro Stück fehlt</span>' : ""}</span>${alt}</div>`;
+                ${(!has || nw) ? `<span class="rd-nstat">${!has ? "Tabelle scannen" : "Gewicht fehlt"}</span>` : ""}${alt}</div>`;
         }).join("");
         // Ausgeblendete Zutaten (optional / ohne Menge / Gewuerz / abgewaehlt): Haken setzen -> Kachel poppt oben auf; ohne Menge fragt die Zeile kurz danach
         let hid = r.ingredients.map((raw, idx) => {
             if (!raw || !String(raw.name || "").trim() || _nutIngIncluded(raw)) return "";
             let hasQ = parseFloat(raw.qty) > 0, why = _nutHiddenReason(raw);
             let ask = hasQ ? "" : `<div class="rd-nhask"><div class="rd-nhask-r"><input type="number" inputmode="decimal" min="0" step="any" placeholder="Menge" onkeydown="if (event.key === 'Enter') { event.preventDefault(); _rdNutHidAdd(${index}, ${idx}, false); }"><select><option value="g">g</option><option value="ml">ml</option><option value="kg">kg</option><option value="l">l</option><option value="el">EL</option><option value="tl">TL</option><option value="">Stück</option></select><button type="button" onclick="_rdNutHidAdd(${index}, ${idx}, false)">OK</button></div><div class="rd-nhhint">Eine Menge wird gebraucht, damit die Nährwerte gerechnet werden können.</div></div>`;
-            return `<div class="rd-nhrow" data-hi="${idx}"><div class="rd-nhmain" role="button" tabindex="0" onclick="_rdNutHidTap(${index}, ${idx})"><span class="rd-nhcb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span class="rd-nhtx"><span class="rd-nhname">${esc(raw.name)}</span><span class="rd-nhwhy">${esc(why)} · zählt nicht mit</span></span></div>${ask}</div>`;
+            return `<div class="rd-nhrow" data-hi="${idx}"><div class="rd-nhmain" role="button" tabindex="0" onclick="_rdNutHidTap(${index}, ${idx})"><span class="rd-nhcb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span class="rd-nhtx"><span class="rd-nhname">${esc(raw.name)}</span><span class="rd-nhwhy">${esc(why)}</span></span></div>${ask}</div>`;
         }).join("");
         return `<div class="rd-card"><div class="rd-card-sub"><span>Nährwerte</span>${hasAnyQty ? `<span>für ${currentServings} Portion${currentServings === 1 ? "" : "en"}</span>` : ""}</div>
             <div style="padding:12px 12px 0;">${buildNutLive()}</div>
             ${cells.length ? `<div class="rd-nut-grid${window._rdNutBumpNow ? " rd-bump" : ""}">${tiles}</div>` : ""}${note}
-            ${ing ? `<div class="rd-nsec"><span>Nährwerte der Zutaten</span><em>antippen zum Scannen</em></div><div class="rd-ntiles">${ing}</div>` : ""}
-            ${hid ? `<div class="rd-nsec"><span>Nicht berücksichtigt</span><em>Haken setzen zum Hinzufügen</em></div><div class="rd-nhid">${hid}</div>` : ""}
+            ${ing ? `<div class="rd-nsec"><span>Nährwerte der Zutaten</span></div><div class="rd-ntiles">${ing}</div>` : ""}
+            ${hid ? `<div class="rd-nsec"><span>Nicht berücksichtigt</span><em>Haken = hinzufügen</em></div><div class="rd-nhid">${hid}</div>` : ""}
             ${(ing || hid) ? `<div class="rd-legend rd-nlegend">${["sortiment", "recipe", "none"].map(k => `<span class="rd-lg" style="--c:${NUT_SRC_STYLE[k].rgb};">${NUT_SRC_STYLE[k].label}</span>`).join("")}</div>` : ""}</div>`;
     };
     let availParts = buildAvailParts();
