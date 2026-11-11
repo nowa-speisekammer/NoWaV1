@@ -203,9 +203,9 @@ html[data-pgl="1"] #app h1 img { filter: brightness(0) opacity(0.82) !important;
 .rd-nbox.scanning .rd-nlaser, .rd-ntile.scanning .rd-nlaser { animation: rdLaser .95s ease-in-out infinite; }
 @keyframes rdNumBump { 0% { transform: scale(.7); opacity: .3; } 60% { transform: scale(1.12); } 100% { transform: scale(1); opacity: 1; } }
 .rd-nut-grid.rd-bump .rd-nut-val, .rd-bumpn { display: inline-block; animation: rdNumBump .5s cubic-bezier(.19,1,.22,1); }
-.rd-ntiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 12px; }
+.rd-ntiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 12px; }
 @keyframes rdNPop { 0% { transform: scale(0.92); } 55% { transform: scale(1.04); } 100% { transform: scale(1); } }
-.rd-ntile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 8px 10px; border-radius: 18px; color: #fff; cursor: pointer; text-align: center;
+.rd-ntile { position: relative; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 8px 10px; border-radius: 18px; color: #fff; cursor: pointer; text-align: center;
     background: rgba(30,45,70,0.28); border: 1.5px dashed rgba(255,255,244,0.4); touch-action: pan-y; -webkit-tap-highlight-color: transparent; transition: background .25s, border-color .25s; }
 .rd-ntile:active { opacity: 0.8; }
 .rd-ntile.on { background: rgba(30,45,70,0.42); border: 1.5px solid rgba(255,255,244,0.85); }
@@ -239,7 +239,7 @@ html[data-pgl="1"] #app h1 img { filter: brightness(0) opacity(0.82) !important;
 .rd-nsw-b svg { width: 14px; height: 14px; display: block; }
 .rd-nsw-b:active { background: rgba(255,255,244,0.34); transform: scale(.9); }
 .rd-nsw-mid { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 5px; }
-.rd-nsw-l { font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; opacity: .9; white-space: nowrap; line-height: 1; }
+.rd-nsw-l { font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; opacity: .9; white-space: nowrap; line-height: 1; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .rd-nsw-seg { display: flex; gap: 3px; }
 .rd-nsw-seg i { display: block; width: 10px; height: 4px; border-radius: 2px; background: #fffff4; opacity: .32; transition: width .25s cubic-bezier(.2,.8,.2,1), opacity .25s; }
 .rd-nsw-seg i.on { width: 20px; opacity: 1; }
@@ -33550,10 +33550,10 @@ function _mhdRecipesForProduct(matches) {
 }
 
 function _mhdRecipesBlock(matches) {
-    let head = `<div class="lsp-eyebrow" style="margin:18px 0 8px 2px;">Rezepte mit diesem Produkt</div>`;
+    let head = `<div class="lsp-eyebrow" style="margin:0 0 8px 2px;">Rezepte mit diesem Produkt</div>`;
     let hits = _mhdRecipesForProduct(matches);
     if (!hits.length) {
-        return head + `<div style="font-size:12px; opacity:0.55; line-height:1.5; margin-left:2px;">Noch kein Rezept von dir enthält dieses Produkt.</div>`;
+        return head + `<div style="font-size:12px; opacity:0.55; line-height:1.5; margin-left:2px; margin-bottom:18px;">Noch kein Rezept von dir enthält dieses Produkt.</div>`;
     }
     let rows = hits.map(({ r, i, status }) => {
         let col = _LK_STATUS_COL[status] || _LK_STATUS_COL.unk;
@@ -33571,11 +33571,12 @@ function _mhdRecipesBlock(matches) {
             </span>
         </button>`;
     }).join("");
-    return head + `<div style="max-height:210px; overflow-y:auto; -webkit-overflow-scrolling:touch;">${rows}</div>`;
+    return head + `<div style="max-height:210px; overflow-y:auto; -webkit-overflow-scrolling:touch; margin-bottom:18px;">${rows}</div>`;
 }
 
 function openRecipeFromPantryInfo(index) {
     if (!recipes[index]) return;
+    saveCustomData();   // Edit und Infos sind jetzt eine Ansicht: offene Aenderungen nicht verlieren
     closeMHD();
     openRecipeDetail(index, "renderHome()");   // Zurück-Pfeil führt wieder in die Pantry
 }
@@ -33761,17 +33762,21 @@ function showMHD(uid) {
         </div>`;
     let { r: mar, g: mag, b: mab } = hexToRgbTriplet(mhdAccent);
     let mhdCardBg = `rgb(${Math.round(mar * 0.08 + 255 * 0.92)}, ${Math.round(mag * 0.08 + 255 * 0.92)}, ${Math.round(mab * 0.08 + 255 * 0.92)})`;
+    let _mhdPanelCss = `background: ${mhdCardBg}; color: #333; padding: 20px; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.14); text-align: left; max-width: 300px; width: 100%; margin:10px auto 0;`;
     let html = `
             ${carouselHtml}
             ${dotsHtml}
-            ${switchHtml}
 
-            <div class="mhd-popup-extra mhd-panel" style="${(window.mhdEditMode && !pantryLabelsEnabled) ? "display:none; " : ""}background: ${mhdCardBg}; color: #333; padding: 20px; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.14); text-align: left; max-width: 300px; width: 100%; margin:10px auto 0;">
+            <div class="mhd-popup-extra mhd-panel" style="${(window.mhdEditMode && !pantryLabelsEnabled) ? "display:none; " : ""}${_mhdPanelCss}">
     `;
     let hasAnyLifespanData = !!(shelfLifeDays[key] || openedShelfLifeDays[key] || (cutOption[key] && cutShelfLifeDays[key]));
     if (window.mhdEditMode) {
         html += `<div class="lsp-eyebrow" style="margin-bottom:4px;">Label</div>${labelSlots.join("")}`;
-    } else if (hasAnyLifespanData) {
+    }
+    // Einheitliche Ansicht: unter dem Edit-Bereich zuerst die Rezepte mit diesem Produkt, darunter die Infos (zum Runterscrollen)
+    html += `</div><div class="mhd-popup-extra mhd-panel" style="${_mhdPanelCss}">`;
+    html += _mhdRecipesBlock(matches);
+    if (hasAnyLifespanData) {
         let storageKeys = allowedStorage[key] || Array.from(new Set([
             ...Object.keys(shelfLifeDays[key] || {}),
             ...Object.keys(openedShelfLifeDays[key] || {}),
@@ -33826,9 +33831,8 @@ function showMHD(uid) {
         : "";
 
     html += `
-            ${window.mhdEditMode ? "" : _mhdRecipesBlock(matches)}
-            ${window.mhdEditMode ? "" : _spoilageDisplayBlock(key, getActionBarColor())}
-            ${window.mhdEditMode ? "" : priceNoteHtml}
+            ${_spoilageDisplayBlock(key, getActionBarColor())}
+            ${priceNoteHtml}
             </div>
     `;
 
