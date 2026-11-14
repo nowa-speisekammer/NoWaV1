@@ -53688,6 +53688,22 @@ window.onload = async function() {
             })();
         };
         window.addEventListener("load", function () { setTimeout(pullIntent, 600); });
+
+        /* ----- Sprachnotizen, die ohne geoeffnete App aufgenommen wurden (Kachel / Verknuepfung) ----- */
+        var pullVoice = function () {
+            var tries = 0;
+            (function wait() {
+                if (!appReady()) { if (++tries < 100) setTimeout(wait, 300); return; }
+                var s = ""; try { s = A.takePendingVoice(); } catch (e) { return; }
+                if (!s) return;
+                var notes; try { notes = JSON.parse(s); } catch (e) { return; }
+                var n = 0;
+                notes.forEach(function (t) { try { n += runVoiceCommandText(String(t), { fromMic: false }) || 0; } catch (e) { console.warn(e); } });
+                if (n && typeof openVoiceChanges === "function") openVoiceChanges();   // dein vorhandenes Aenderungs-Popup
+            })();
+        };
+        window.addEventListener("load", function () { setTimeout(pullVoice, 900); });
+        document.addEventListener("visibilitychange", function () { if (!document.hidden) setTimeout(pullVoice, 500); });
         return;
     }
 
