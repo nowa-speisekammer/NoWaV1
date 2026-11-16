@@ -53497,6 +53497,108 @@ window.onload = async function() {
    - Im Browser / als PWA (iPhone):
        * zeigt beim Oeffnen der App einmal pro Tag eine Benachrichtigung und setzt das App-Badge
    ============================================================ */
+/* ============================================================
+   :has()-Ersatz fuer alte WebViews / Browser (Chrome < 105)
+   Die App nutzt :has() an ca. 26 Stellen (obere Leiste, Ladescreen, Navigationsleiste ...).
+   Auf alten WebViews werden diese Regeln ignoriert -> z. B. der breite Balken hinter den Icons.
+   Hier wird das CSS beim Start umgeschrieben (:has(X) -> [data-hs~="k"]) und die Markierung
+   data-hs per Script gepflegt. Auf modernen Browsern passiert nichts.
+   Zum Testen am PC: Adresse mit ?forcehas=1 oeffnen.
+   ============================================================ */
+(function () {
+    "use strict";
+    var supported = false;
+    try { supported = !!(window.CSS && CSS.supports && CSS.supports("selector(:has(*))")); } catch (e) {}
+    var forced = /[?&]forcehas=1/.test(location.search);
+    if (supported && !forced) return;
+    if (typeof MutationObserver === "undefined") return;
+
+    var inners = [];                                   // Index k -> Selektor innerhalb von :has(...)
+    function idOf(inner) {
+        var i = inners.indexOf(inner);
+        if (i < 0) { inners.push(inner); i = inners.length - 1; }
+        return i;
+    }
+    function rewrite(css) {
+        var out = "", i = 0, p;
+        while ((p = css.indexOf(":has(", i)) !== -1) {
+            var j = p + 5, depth = 1;
+            while (j < css.length && depth > 0) {
+                var c = css.charAt(j);
+                if (c === "(") depth++; else if (c === ")") depth--;
+                j++;
+            }
+            var inner = css.slice(p + 5, j - 1).trim();
+            out += css.slice(i, p) + '[data-hs~="' + idOf(inner) + '"]';
+            i = j;
+        }
+        return out + css.slice(i);
+    }
+    function fixStyle(st) {
+        var t = st.textContent;
+        if (t && t.indexOf(":has(") !== -1) { st.textContent = rewrite(t); return true; }
+        return false;
+    }
+    function fixTree(node) {
+        if (node.nodeName === "STYLE") { fixStyle(node); return; }
+        if (node.querySelectorAll) {
+            var list = node.querySelectorAll("style");
+            for (var i = 0; i < list.length; i++) fixStyle(list[i]);
+        }
+    }
+
+    window.__nowaHasRewrite = rewrite;                 // nur fuer Tests
+
+    var scheduled = false;
+    function mark() {
+        scheduled = false;
+        var want = new Map();                          // Element -> Liste der k
+        function add(el, k) { var a = want.get(el); if (!a) { a = []; want.set(el, a); } if (a.indexOf(k) < 0) a.push(k); }
+        inners.forEach(function (inner, k) {
+            var child = inner.charAt(0) === ">";
+            var bare = inner.replace(/^[>+~]\s*/, "");
+            var matches;
+            try { matches = document.querySelectorAll(bare); } catch (e) { return; }
+            for (var i = 0; i < matches.length; i++) {
+                var el = matches[i].parentElement;
+                if (child) { if (el) add(el, k); continue; }
+                while (el) { add(el, k); el = el.parentElement; }
+            }
+        });
+        var old = document.querySelectorAll("[data-hs]");
+        for (var i = 0; i < old.length; i++) if (!want.has(old[i])) old[i].removeAttribute("data-hs");
+        want.forEach(function (ks, el) {
+            var v = ks.join(" ");
+            if (el.getAttribute("data-hs") !== v) el.setAttribute("data-hs", v);
+        });
+    }
+    function schedule() {
+        if (scheduled) return;
+        scheduled = true;
+        (window.requestAnimationFrame || setTimeout)(mark);
+    }
+
+    var mo = new MutationObserver(function (muts) {
+        var need = false;
+        for (var i = 0; i < muts.length; i++) {
+            var m = muts[i];
+            if (m.type === "childList") {
+                if (m.target && m.target.nodeName === "STYLE") fixStyle(m.target);
+                for (var k = 0; k < m.addedNodes.length; k++) {
+                    var n = m.addedNodes[k];
+                    if (n.nodeType === 1) fixTree(n);
+                }
+                need = true;
+            } else if (m.type === "attributes") { need = true; }
+        }
+        if (need) schedule();
+    });
+    mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+
+    fixTree(document.documentElement);
+    schedule();
+})();
+
 (function () {
     "use strict";
 
