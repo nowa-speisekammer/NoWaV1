@@ -7894,7 +7894,11 @@ function hasRealImage(v) {
 }
 
 function isPhotoLoading(v) {
-    return isPhotoRef(v) && !photoCache[v.slice(PHOTO_REF_PREFIX.length)];
+    if (!isPhotoRef(v)) return false;
+    let id = v.slice(PHOTO_REF_PREFIX.length);
+    if (photoCache[id]) return false;
+    requestPhoto(id);
+    return true;
 }
 
 const PHOTO_CACHE_KEY = "lebensmittel_photo_cache_v1";
@@ -7940,7 +7944,13 @@ const PHOTO_LOADING_PLACEHOLDER = "data:image/svg+xml;utf8," + encodeURIComponen
 
 function imgSrcFor(v) {
     if (!v) return "";
-    if (isPhotoRef(v)) return photoCache[v.slice(PHOTO_REF_PREFIX.length)] || PHOTO_LOADING_PLACEHOLDER;
+    if (isPhotoRef(v)) {
+        let id = v.slice(PHOTO_REF_PREFIX.length);
+        let c = photoCache[id];
+        if (c) return c;
+        requestPhoto(id);
+        return PHOTO_LOADING_PLACEHOLDER;
+    }
     return v;
 }
 
@@ -7956,15 +7966,25 @@ function generatePhotoId() {
 function loadPhotoCacheLocally() {
     return openPhotoDb().then((db) => {
         if (!db) return false;
-        return new Promise((resolve) => {
-            let foundAny = false;
-            let req = db.transaction(PHOTO_DB_STORE, "readonly").objectStore(PHOTO_DB_STORE).openCursor();
-            req.onsuccess = (e) => {
-                let cursor = e.target.result;
-                if (cursor) { photoCache[cursor.key] = cursor.value; foundAny = true; cursor.continue(); }
-                else resolve(foundAny);
-            };
-            req.onerror = () => resolve(foundAny);
+        return _photoIdbKeys(db).then((keys) => {
+            let thumbIds = [], fullIds = [], thumbSet = new Set();
+            keys.forEach((k) => {
+                k = String(k);
+                if (k.endsWith(PHOTO_THUMB_SUFFIX)) { let id = k.slice(0, -PHOTO_THUMB_SUFFIX.length); thumbIds.push(id); thumbSet.add(id); }
+                else fullIds.push(k);
+            });
+            // Nur die kleinen Vorschaubilder kommen in den Arbeitsspeicher (volle Fotos bleiben in IndexedDB)
+            let p = Promise.resolve();
+            for (let i = 0; i < thumbIds.length; i += 40) {
+                let chunk = thumbIds.slice(i, i + 40);
+                p = p.then(() => Promise.all(chunk.map((id) => _photoIdbGet(id + PHOTO_THUMB_SUFFIX).then((v) => { if (v) photoCache[id] = v; }))));
+            }
+            return p.then(() => {
+                // Fotos ohne Vorschau (aus aelteren Versionen): einmalig im Hintergrund nacherzeugen
+                let missing = fullIds.filter((id) => !thumbSet.has(id));
+                if (missing.length) setTimeout(() => missing.forEach((id) => queueThumb(id)), 1500);
+                return keys.length > 0;
+            });
         });
     }).then((foundInIdb) => {
         if (foundInIdb) return;
@@ -7972,7 +7992,7 @@ function loadPhotoCacheLocally() {
             let raw = localStorage.getItem(PHOTO_CACHE_KEY);
             if (raw) {
                 let old = JSON.parse(raw) || {};
-                Object.keys(old).forEach((id) => { photoCache[id] = old[id]; idbPutPhoto(id, old[id]); });
+                Object.keys(old).forEach((id) => { photoCache[id] = old[id]; idbPutPhoto(id, old[id]); queueThumb(id, old[id]); });
                 localStorage.removeItem(PHOTO_CACHE_KEY);
             }
         } catch (e) {}
@@ -7982,9 +8002,10 @@ function loadPhotoCacheLocally() {
 function storePhoto(base64) {
     if (!base64) return null;
     let id = generatePhotoId();
-    photoCache[id] = base64;
+    photoCache[id] = base64;            // kurz das Original, wird gleich durch die kleine Vorschau ersetzt
     idbPutPhoto(id, base64);
     uploadPhotoToCloud(id, base64);
+    queueThumb(id, base64, true);
     return PHOTO_REF_PREFIX + id;
 }
 
@@ -7995,10 +8016,22 @@ function maybeStorePhoto(raw) {
     return raw;
 }
 
+function _photoPendingGet() {
+    try { return JSON.parse(localStorage.getItem(PHOTO_PENDING_KEY) || "[]") || []; } catch (e) { return []; }
+}
+function _photoPendingSet(arr) {
+    try { localStorage.setItem(PHOTO_PENDING_KEY, JSON.stringify(arr)); } catch (e) {}
+}
 function uploadPhotoToCloud(id, base64) {
     if (!syncCode || !initFirebase()) return;
+    let pend = _photoPendingGet();
+    if (pend.indexOf(id) < 0) { pend.push(id); _photoPendingSet(pend); }
     syncDb.collection("households").doc(syncCode).collection("photos").doc(id)
         .set({ data: base64, updatedAt: Date.now() })
+        .then(() => {
+            let a = _photoPendingGet(), i = a.indexOf(id);
+            if (i >= 0) { a.splice(i, 1); _photoPendingSet(a); }
+        })
         .catch(e => console.warn("Foto-Upload fehlgeschlagen:", e));
 }
 
@@ -8007,6 +8040,7 @@ function deletePhoto(ref) {
     let id = ref.slice(PHOTO_REF_PREFIX.length);
     delete photoCache[id];
     idbDeletePhoto(id);
+    idbDeletePhoto(id + PHOTO_THUMB_SUFFIX);
     if (syncCode && initFirebase()) {
         syncDb.collection("households").doc(syncCode).collection("photos").doc(id).delete()
             .catch(e => console.warn("Foto-Löschen fehlgeschlagen:", e));
@@ -8017,9 +8051,35 @@ function deletePhotosInSpoilage(entry) {
     if (entry && Array.isArray(entry.images)) entry.images.forEach(img => deletePhoto(img && img.image));
 }
 
-function pushAllLocalPhotosToCloud() {
+// Alle lokalen Fotos nacheinander in die Cloud schieben (langsam und einzeln, damit der Speicher nicht explodiert)
+function pushAllLocalPhotosToCloud(onDone) {
     if (!syncCode || !initFirebase()) return;
-    Object.keys(photoCache).forEach(id => uploadPhotoToCloud(id, photoCache[id]));
+    openPhotoDb().then(db => db ? _photoIdbKeys(db) : []).then(keys => {
+        let ids = keys.map(String).filter(k => !k.endsWith(PHOTO_THUMB_SUFFIX));
+        let i = 0;
+        (function next() {
+            if (i >= ids.length) { if (onDone) onDone(); return; }
+            let id = ids[i++];
+            _photoIdbGet(id).then(v => { if (v) uploadPhotoToCloud(id, v); }).catch(() => {}).then(() => setTimeout(next, 250));
+        })();
+    });
+}
+
+// Beim App-Start: nicht mehr alles neu hochladen, sondern nur Fotos, deren Upload noch nicht bestaetigt wurde.
+// Einmalig pro Geraet und Haushalt wird der komplette Bestand langsam im Hintergrund nachgezogen.
+function pushPhotosAfterStart() {
+    if (!syncCode) return;
+    let flag = "nowa_photo_fullpush_v1_" + syncCode, done = false;
+    try { done = !!localStorage.getItem(flag); } catch (e) {}
+    if (!done) {
+        setTimeout(() => pushAllLocalPhotosToCloud(() => { try { localStorage.setItem(flag, "1"); } catch (e) {} }), 20000);
+        return;
+    }
+    setTimeout(() => {
+        _photoPendingGet().forEach((id, i) => setTimeout(() => {
+            _photoIdbGet(id).then(v => { if (v) uploadPhotoToCloud(id, v); }).catch(() => {});
+        }, i * 300));
+    }, 8000);
 }
 
 function migrateLegacyInlinePhotos() {
@@ -8057,25 +8117,36 @@ function migrateLegacyInlinePhotos() {
 function startPhotoListener(code) {
     if (!initFirebase()) return;
     if (photoUnsubscribe) { photoUnsubscribe(); photoUnsubscribe = null; }
-    photoUnsubscribe = syncDb.collection("households").doc(code).collection("photos").onSnapshot(
+    let sinceKey = PHOTO_SINCE_KEY + code;
+    let since = 0;
+    try { since = parseInt(localStorage.getItem(sinceKey) || "0", 10) || 0; } catch (e) {}
+    let q = syncDb.collection("households").doc(code).collection("photos");
+    // Nach dem ersten Abgleich nur noch Fotos laden, die seit dem letzten Mal neu oder geaendert sind.
+    // Ein Foto, das lokal fehlt, wird bei Bedarf einzeln nachgeladen (getFullPhoto).
+    if (since > 0) q = q.where("updatedAt", ">", since);
+    photoUnsubscribe = q.onSnapshot(
         (snap) => {
-            let updatedIds = [];
-            let removedIds = [];
+            let removedIds = [], maxSeen = since;
             snap.docChanges().forEach(change => {
+                let id = change.doc.id;
                 if (change.type === "removed") {
-                    if (photoCache[change.doc.id] !== undefined) { delete photoCache[change.doc.id]; idbDeletePhoto(change.doc.id); removedIds.push(change.doc.id); }
+                    if (photoCache[id] !== undefined) removedIds.push(id);
+                    delete photoCache[id];
+                    idbDeletePhoto(id);
+                    idbDeletePhoto(id + PHOTO_THUMB_SUFFIX);
                 } else {
                     let data = change.doc.data();
-                    if (data && data.data && photoCache[change.doc.id] !== data.data) {
-                        photoCache[change.doc.id] = data.data;
-                        idbPutPhoto(change.doc.id, data.data);
-                        updatedIds.push(change.doc.id);
-                    }
+                    if (!data || !data.data) return;
+                    if (data.updatedAt > maxSeen) maxSeen = data.updatedAt;
+                    photoGaveUp.delete(id);
+                    idbPutPhoto(id, data.data);
+                    queueThumb(id);          // kleine Vorschau erzeugen, danach werden die Bilder auf der Seite ersetzt
                 }
             });
-            if (updatedIds.length || removedIds.length) {
-                patchPhotoImages(updatedIds, removedIds);
+            if (maxSeen > since) {
+                try { localStorage.setItem(sinceKey, String(Math.max(since, maxSeen - 3600000))); } catch (e) {}
             }
+            if (removedIds.length) patchPhotoImages([], removedIds);
         },
         (error) => console.warn("Foto-Sync-Verbindung verloren:", error)
     );
@@ -8094,6 +8165,136 @@ function patchPhotoImages(updatedIds, removedIds) {
             el.classList.remove("photo-loading");
         });
     });
+}
+
+// ===== Foto-Speicher sparsam: im Arbeitsspeicher liegen nur kleine Vorschaubilder =====
+// Volle Fotos bleiben in IndexedDB (und in der Cloud) und werden nur bei Bedarf geholt.
+const PHOTO_THUMB_SUFFIX = "#t";
+const PHOTO_THUMB_MAX = 420;
+const PHOTO_PENDING_KEY = "nowa_photo_pending_v1";
+const PHOTO_SINCE_KEY = "nowa_photo_since_v1_";
+let photoThumbQueue = [];
+let photoThumbBusy = false;
+const photoThumbQueued = new Set();
+const photoGaveUp = new Set();
+
+function _photoIdbGet(key) {
+    return openPhotoDb().then(db => !db ? null : new Promise(resolve => {
+        try {
+            let r = db.transaction(PHOTO_DB_STORE, "readonly").objectStore(PHOTO_DB_STORE).get(key);
+            r.onsuccess = () => resolve(r.result === undefined ? null : r.result);
+            r.onerror = () => resolve(null);
+        } catch (e) { resolve(null); }
+    }));
+}
+
+function _photoIdbKeys(db) {
+    return new Promise(resolve => {
+        try {
+            let store = db.transaction(PHOTO_DB_STORE, "readonly").objectStore(PHOTO_DB_STORE);
+            if (store.getAllKeys) {
+                let r = store.getAllKeys();
+                r.onsuccess = () => resolve(r.result || []);
+                r.onerror = () => resolve([]);
+            } else {
+                let keys = [], r = store.openKeyCursor ? store.openKeyCursor() : store.openCursor();
+                r.onsuccess = e => { let c = e.target.result; if (c) { keys.push(c.key); c.continue(); } else resolve(keys); };
+                r.onerror = () => resolve(keys);
+            }
+        } catch (e) { resolve([]); }
+    });
+}
+
+function makeThumbDataUrl(srcData) {
+    return new Promise(resolve => {
+        try {
+            let png = /^data:image\/png/i.test(srcData);
+            let img = new Image();
+            img.onload = () => {
+                try {
+                    let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+                    if (!w || !h) { resolve(null); return; }
+                    if (w <= PHOTO_THUMB_MAX && h <= PHOTO_THUMB_MAX && srcData.length < 60000) { resolve(srcData); return; }
+                    let k = Math.min(1, PHOTO_THUMB_MAX / Math.max(w, h));
+                    let c = document.createElement("canvas");
+                    c.width = Math.max(1, Math.round(w * k));
+                    c.height = Math.max(1, Math.round(h * k));
+                    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+                    let out = png ? c.toDataURL("image/png") : c.toDataURL("image/jpeg", 0.72);
+                    c.width = 0; c.height = 0;
+                    resolve(out);
+                } catch (e) { resolve(null); }
+            };
+            img.onerror = () => resolve(null);
+            img.src = srcData;
+        } catch (e) { resolve(null); }
+    });
+}
+
+// Volles Foto holen: Arbeitsspeicher-Hinweis -> IndexedDB -> Cloud
+function getFullPhoto(id, known) {
+    if (known) return Promise.resolve(known);
+    return _photoIdbGet(id).then(v => {
+        if (v) return v;
+        if (!syncCode || !initFirebase()) return null;
+        return syncDb.collection("households").doc(syncCode).collection("photos").doc(id).get()
+            .then(doc => {
+                let d = doc.exists && doc.data() && doc.data().data;
+                if (d) idbPutPhoto(id, d);
+                return d || null;
+            }).catch(() => null);
+    });
+}
+
+function queueThumb(id, knownData, priority) {
+    if (photoThumbQueued.has(id)) return;
+    photoThumbQueued.add(id);
+    let job = { id, data: knownData || null };
+    if (priority) photoThumbQueue.unshift(job); else photoThumbQueue.push(job);
+    _runThumbQueue();
+}
+
+function _runThumbQueue() {
+    if (photoThumbBusy) return;
+    let job = photoThumbQueue.shift();
+    if (!job) return;
+    photoThumbBusy = true;
+    getFullPhoto(job.id, job.data)
+        .then(full => full ? makeThumbDataUrl(full).then(th => ({ full, th })) : { full: null, th: null })
+        .then(({ full, th }) => {
+            if (!full) { photoGaveUp.add(job.id); return; }
+            if (th) {
+                photoCache[job.id] = th;
+                idbPutPhoto(job.id + PHOTO_THUMB_SUFFIX, th);
+                patchPhotoImages([job.id], []);
+            } else if (!photoCache[job.id]) {
+                photoCache[job.id] = full;   // Notloesung: Vorschau konnte nicht erzeugt werden
+                patchPhotoImages([job.id], []);
+            }
+        })
+        .catch(() => {})
+        .then(() => {
+            photoThumbQueued.delete(job.id);
+            photoThumbBusy = false;
+            setTimeout(_runThumbQueue, 15);
+        });
+}
+
+// Beim Zeichnen fehlt eine Vorschau: im Hintergrund erzeugen bzw. nachladen
+function requestPhoto(id) {
+    if (!id || photoCache[id] || photoThumbQueued.has(id) || photoGaveUp.has(id)) return;
+    queueThumb(id, null, true);
+}
+
+// Grosse Ansichten (Rezept-Kopfbild, Lightbox): erst die Vorschau, dann das volle Foto nachladen
+function _fullUpgrade(el) {
+    try {
+        if (!el || el.dataset.up) return;
+        let id = el.dataset.photoId;
+        if (!id) return;
+        el.dataset.up = "1";
+        getFullPhoto(id).then(full => { if (full && el.isConnected) el.src = full; }).catch(() => {});
+    } catch (e) {}
 }
 
 let openable = ["milch"];
@@ -10183,8 +10384,7 @@ function applyBackupPayload(data) {
     if (Array.isArray(data.mealPlanTemplates)) mealPlanTemplates = data.mealPlanTemplates;
     if (Array.isArray(data.friendSyncCodes)) friendSyncCodes = data.friendSyncCodes;
     if (data.photoCache) {
-        photoCache = Object.assign({}, photoCache, data.photoCache);
-        Object.keys(data.photoCache).forEach(id => idbPutPhoto(id, data.photoCache[id]));
+        Object.keys(data.photoCache).forEach(id => { idbPutPhoto(id, data.photoCache[id]); queueThumb(id); });
         pushAllLocalPhotosToCloud();
     }
     applyCustomData();
@@ -33558,6 +33758,8 @@ function _spoilageImagesHtml(color) {
 }
 
 function openSpoilageLightbox(src, label, color) {
+    let lbId = isPhotoRef(src) ? photoRefId(src) : "";
+    if (lbId) src = imgSrcFor(src);
     let overlay = document.createElement("div");
     overlay.id = "spoilageLightboxOverlay";
     overlay.style.cssText = `
@@ -33573,7 +33775,7 @@ function openSpoilageLightbox(src, label, color) {
         <style>@keyframes spoilageLightboxFade{from{opacity:0;}to{opacity:1;}}</style>
         <div style="max-width:min(92vw,480px); width:100%; cursor:default;" onclick="event.stopPropagation();">
             <div style="border-radius:18px; overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,0.5); border:3px solid ${tag ? tag.color : "rgba(255,255,255,0.25)"}; box-sizing:border-box;">
-                <img src="${src}" style="width:100%; max-height:75vh; object-fit:contain; display:block; background:#111;">
+                <img src="${src}" ${lbId ? `data-photo-id="${lbId}" onload="_fullUpgrade(this)"` : ""} style="width:100%; max-height:75vh; object-fit:contain; display:block; background:#111;">
             </div>
             ${tag ? `<div style="text-align:center; margin-top:12px; font-size:12px; font-weight:bold; letter-spacing:0.04em; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color:${tag.color}; background:white; display:inline-flex; align-items:center; gap:6px; padding:5px 14px; border-radius:20px; left:50%; position:relative; transform:translateX(-50%);"><span>${tag.icon}</span><span>${tag.label}</span></div>` : ""}
             <div style="text-align:center; margin-top:14px;">
@@ -33594,7 +33796,7 @@ function _spoilageDisplayBlock(key, color) {
     let imagesHtml = hasImages ? `<div style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center; ${hasText ? "margin-bottom:14px;" : ""}">
         ${images.map(img => {
             let tag = SPOILAGE_TAGS.find(t => t.key === img.label);
-            let safeSrc = imgSrcFor(img.image).replace(/'/g, "\\'");
+            let safeSrc = (isPhotoRef(img.image) ? img.image : imgSrcFor(img.image)).replace(/'/g, "\\'");
             return `<div style="width:92px; position:relative;">
                 <div onclick="openSpoilageLightbox('${safeSrc}', ${img.label ? `'${img.label}'` : null}, '${color}')" style="width:92px; height:92px; border-radius:14px; overflow:hidden; border:2.5px solid ${tag ? tag.color : "#eee"}; box-sizing:border-box; cursor:zoom-in; box-shadow:0 2px 8px rgba(0,0,0,0.12); transition:transform 0.12s ease, box-shadow 0.12s ease;" onmouseover="this.style.transform='scale(1.04)'; this.style.boxShadow='0 4px 14px rgba(0,0,0,0.2)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.12)';">
                     <img src="${imgSrcFor(img.image)}" data-photo-id="${photoRefId(img.image)}" style="width:100%; height:100%; object-fit:cover; display:block; pointer-events:none;">
@@ -42133,7 +42335,7 @@ function openCreateRecipe(prefill) {
     let nameVal = esc(name).replace(/"/g, "&quot;");
     let photoOnclick = window.recipeImageDraft ? "openRecipePhotoOptions()" : "document.getElementById('recipePhotoFileInput').click()";
     let photoInner = window.recipeImageDraft
-        ? `<img id="recipePhotoPreview" src="${imgSrcFor(window.recipeImageDraft)}" data-photo-id="${photoRefId(window.recipeImageDraft)}" style="width:100%; height:100%; object-fit:cover;">`
+        ? `<img id="recipePhotoPreview" src="${imgSrcFor(window.recipeImageDraft)}" data-photo-id="${photoRefId(window.recipeImageDraft)}" onload="_fullUpgrade(this)" style="width:100%; height:100%; object-fit:cover;">`
         : `<img src="data:image/png;base64,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" style="width:30px; height:30px; opacity:0.8; object-fit:contain; filter:brightness(0) invert(1);">`;
 
     let tabs = [["ingredients", "Zutaten" + (ingCount ? " · " + ingCount : "")], ["instructions", "Zubereitung"]];
@@ -43521,7 +43723,7 @@ function _rpEnsureStyles() {
     st.id = "rpStyles";
     st.textContent = [
         ".rp-list { display:flex; flex-direction:column; align-items:center; padding:6px 14px 24px; }",
-        ".rp-row { box-sizing:border-box; width:100%; max-width:360px; display:flex; align-items:center; gap:11px; padding:10px 12px; margin:0 0 10px; cursor:pointer; text-align:left;",
+        ".rp-row { box-sizing:border-box; width:100%; max-width:360px; display:flex; align-items:center; gap:11px; padding:13px 15px; margin:0 0 10px; cursor:pointer; text-align:left;",
         "  background:var(--c); color:#fff; border:1.5px solid rgba(255,255,244,0.6); border-radius:20px; box-shadow:0 4px 12px rgba(0,0,0,0.18); -webkit-tap-highlight-color:transparent; }",
         ".rp-row:active { transform:scale(0.98); }",
         ".rp-ico { width:40px; height:40px; border-radius:50%; overflow:hidden; flex-shrink:0; box-shadow:0 2px 6px rgba(0,0,0,0.16); }",
@@ -43587,11 +43789,8 @@ function _renderRecipePantryList() {
     let rows = Array.from(groups.values()).map(({ item, count }) => {
         let idx = window._rpNames.push(item.name) - 1;
         let col = getColor(getRemainingTime(item));
-        let ico = hasRealImage(item.image)
-            ? `<div class="rp-ico"><img src="${imgSrcFor(item.image)}" data-photo-id="${photoRefId(item.image)}" draggable="false" alt=""></div>`
-            : `<div class="no-image-placeholder-small" style="width:40px; height:40px; flex-shrink:0;"></div>`;
         let tag = count > 1 ? `×${count}` : (item.qty ? `${_escapeHtml(String(item.qty))}${item.qtyUnit ? "\u2009" + _escapeHtml(String(item.qtyUnit)) : ""}` : "");
-        return `<div class="rp-row" style="--c:${col};" onclick="pickRecipePantryItem(${idx})">${ico}<span class="rp-name">${_escapeHtml(item.name)}</span>${tag ? `<span class="rp-tag">${tag}</span>` : ""}</div>`;
+        return `<div class="rp-row" style="--c:${col};" onclick="pickRecipePantryItem(${idx})"><span class="rp-name">${_escapeHtml(item.name)}</span>${tag ? `<span class="rp-tag">${tag}</span>` : ""}</div>`;
     }).join("");
     el.innerHTML = `<div class="rp-list">${rows}</div>`;
 }
@@ -43636,6 +43835,7 @@ function openShopForRecipe() {
     `;
     _applyRecipePickSource();
     alignAnyVisibleTopBar();
+    window.scrollTo(0, 0);   // sonst bleibt die Scroll-Position vom Rezept-Formular und der Umschalter ist ausserhalb des Bildes
 }
 
 function renderRecipeShopCategoryTopBarInner(cat) {
@@ -43774,32 +43974,38 @@ function selectRecipeIngredient(name, isCustom) {
         openCreateRecipe({ index: window.recipeEditIndex, name: window.recipeNameDraft, ingredients: window.recipeIngredients, image: window.recipeImageDraft });
         return;
     }
-    let color = getActionBarColor();
+    // Mengen-Popup im blauen Popup-Stil (wie Postfach, Haushalt, BeMeal) statt der alten weissen Box
+    const blue = "#4f7cac";
     let overlay = createModal(`
-        <div class="custom-modal-box" style="--modal-accent:${color};">
-            <div class="custom-modal-message"><b>${name}</b>${isCustom ? `<br><span style="font-size:0.75em; opacity:0.55;">custom ingredient</span>` : ""}</div>
-            <div style="display:flex; gap:6px; justify-content:center; margin:10px 0 4px 0;">
-                <input id="recipeIngQty" type="number" min="1" placeholder="qty" style="width:80px; border-radius:8px; border:1px solid #ccc; padding:6px 8px; font-size:14px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; text-align:center;">
-                ${unitSwiperHTML("recipeIngUnit", "", color, "", "compact")}
+        <div class="custom-modal-box nm-box" style="max-width:340px; width:calc(100% - 28px); padding:20px 16px 16px;">
+            <div class="nm-title" style="margin:0 4px 2px; text-align:left; overflow-wrap:anywhere;">${_escapeHtml(name)}</div>
+            <div style="margin:0 4px 14px; font-size:11.5px; font-weight:700; opacity:0.6; text-align:left;">${isCustom ? "eigene Zutat" : "wie viel brauchst du?"}</div>
+            <div style="display:flex; gap:8px; align-items:center; margin:0 0 4px;">
+                <div class="nm-input-row" style="flex:1; min-width:0;"><input id="recipeIngQty" class="nm-input" type="number" inputmode="decimal" min="0" placeholder="Menge"></div>
+                ${unitSwiperHTML("recipeIngUnit", "", blue, "", "compact")}
             </div>
-            <div class="custom-modal-buttons">
-                <button id="recipeIngOk" style="background:${color};">add</button>
-                <button id="recipeIngCancel" style="background:#999;">cancel</button>
+            <div style="display:flex; gap:8px; margin-top:14px;">
+                <button id="recipeIngCancel" type="button" class="nm-btn nm-btn-soft nm-btn-lg" style="flex:1;">Abbrechen</button>
+                <button id="recipeIngOk" type="button" class="nm-btn nm-btn-lg" style="flex:1; --c:${blue};">Hinzufügen</button>
             </div>
         </div>
     `);
     initUnitSwiper("recipeIngUnit");
-    document.getElementById("recipeIngOk").onclick = function() {
-        let qty = document.getElementById("recipeIngQty").value.trim();
+    let qtyEl = document.getElementById("recipeIngQty");
+    const done = () => {
+        let qty = qtyEl.value.trim();
         let unit = document.getElementById("recipeIngUnit").value;
         window.recipeIngredients.push({ name, qty, unit, custom: isCustom || false });
         overlay.remove();
         openCreateRecipe({ index: window.recipeEditIndex, name: window.recipeNameDraft, ingredients: window.recipeIngredients, image: window.recipeImageDraft });
     };
+    document.getElementById("recipeIngOk").onclick = done;
+    qtyEl.addEventListener("keydown", e => { if (e.key === "Enter") done(); });
     document.getElementById("recipeIngCancel").onclick = () => {
         overlay.remove();
         openCreateRecipe({ index: window.recipeEditIndex, name: window.recipeNameDraft, ingredients: window.recipeIngredients, image: window.recipeImageDraft });
     };
+    setTimeout(() => { try { qtyEl.focus(); } catch (e) {} }, 60);
 }
 
 function openShopForShoppingPick() {
@@ -44648,12 +44854,7 @@ function setRecipeRating(index, stars) {
 function resolvePublishableImage(image) {
     if (!hasRealImage(image)) return Promise.resolve(null);
     if (!isPhotoRef(image)) return Promise.resolve(image);
-    let id = photoRefId(image);
-    if (photoCache[id]) return Promise.resolve(photoCache[id]);
-    if (!syncCode || !initFirebase()) return Promise.resolve(null);
-    return syncDb.collection("households").doc(syncCode).collection("photos").doc(id).get()
-        .then(doc => (doc.exists && doc.data().data) || null)
-        .catch(() => null);
+    return getFullPhoto(photoRefId(image)).catch(() => null);
 }
 
 // ---- Naehrwerte teilen (optional): Absender entscheidet, Empfaenger uebernimmt oder verwirft ----
@@ -49669,7 +49870,7 @@ function openRecipeDetail(index, backTo) {
         <div class="rd-wrap">
             <div class="rd-head">
                 <div class="rd-head-top">
-                    ${r.image ? `<div class="rd-head-img"><img src="${imgSrcFor(r.image)}" data-photo-id="${photoRefId(r.image)}"></div>` : ""}
+                    ${r.image ? `<div class="rd-head-img"><img src="${imgSrcFor(r.image)}" data-photo-id="${photoRefId(r.image)}" onload="_fullUpgrade(this)"></div>` : ""}
                     <div class="rd-head-main">
                         <div class="rd-head-title" style="font-size:${titleSize}px;">${esc(r.name)}</div>
                         ${creatorHtml}
@@ -54600,7 +54801,7 @@ function initSyncOnLoad() {
         syncCode = saved;
         startSyncListener(syncCode);
         startPhotoListener(syncCode);
-        pushAllLocalPhotosToCloud();
+        pushPhotosAfterStart();
         if (lastLocalUpdate) {
             syncDb.collection("households").doc(syncCode).get().then((doc) => {
                 let cloudUpdatedAt = (doc.exists && doc.data().updatedAt) || 0;
