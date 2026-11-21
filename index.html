@@ -472,7 +472,9 @@ textarea {
 }
 /* Ladescreen aktiv: auch html/body im Onboarding-Teal, damit hinter Safe-Areas/Overscroll kein Beige durchscheint */
 html:has(.app-loading-screen),
-html:has(.app-loading-screen) body {
+html:has(.app-loading-screen) body,
+html:has(.swu-overlay),
+html:has(.swu-overlay) body {
     background: #497476 !important;
     /* Ladescreen darf nicht wegscrollbar oder wegziehbar sein (auch kein Gummiband-Effekt auf iOS) */
     overflow: hidden !important;
@@ -481,7 +483,8 @@ html:has(.app-loading-screen) body {
     padding-bottom: 0 !important;
     touch-action: none !important;
 }
-html:has(.app-loading-screen) .app-loading-screen { touch-action: none; overscroll-behavior: none; }
+html:has(.app-loading-screen) .app-loading-screen,
+html:has(.swu-overlay) .swu-overlay { touch-action: none; overscroll-behavior: none; -webkit-user-select: none; user-select: none; }
 /* ===== Ladescreen: Blinky schwimmt von links nach rechts und frisst Muenzen =====
    Reine CSS-Animation (nur transform/opacity), laeuft also auch, waehrend die App noch laedt.
    Feinjustierung und Muenz-Zeitplan: LOADING_MOUTH_X/Y, LOADING_SECONDS, LOADING_COINS oben im Python-Skript. */
@@ -54748,6 +54751,7 @@ function pushLocalDataToCloud() {
 let _syncBase = { rev: 0, pantry: {}, shop: {}, ready: false };
 let _syncDirty = false;
 let _syncSeq = 0;
+let _syncFailCount = 0, _syncLastErrToast = 0, _syncRetryTimer = null;
 const SYNC_BASE_KEY = "nowa_sync_base_v2_";
 const SYNC_DIRTY_KEY = "nowa_sync_dirty_v2_";
 
@@ -54828,13 +54832,23 @@ function _syncUploadNow() {
     })).then(res => {
         if (syncCode !== code) return;
         if (res.merged && _syncSeq !== seq) return;      // inzwischen weiter bearbeitet: Basis bleibt, naechster Upload merged erneut
+        _syncFailCount = 0;
         _syncSetBase(res.out);
         if (_syncSeq === seq) _syncMarkDirty(false);
         if (res.merged) { lastLocalUpdate = res.out.updatedAt || lastLocalUpdate; applyRemotePayload(res.out, { force: true }); }
     }).catch(e => {
-        console.warn("Sync-Upload fehlgeschlagen:", e);
-        showToast("⚠️ Sync-Upload fehlgeschlagen – wird erneut versucht");
-        setTimeout(() => { if (_syncDirty && syncCode === code) scheduleSyncUpload(); }, 15000);
+        _syncFailCount++;
+        let ecode = (e && e.code) || "";
+        console.warn("Sync-Upload fehlgeschlagen:", ecode, e);
+        let offline = (typeof navigator !== "undefined" && navigator.onLine === false) || ecode === "unavailable" || /offline|network/i.test(String((e && e.message) || ""));
+        // Nicht nerven: offline ist normal (die Aenderungen bleiben gemerkt und gehen spaeter raus); sonst hoechstens alle 10 Minuten melden
+        if (!offline && Date.now() - _syncLastErrToast > 600000) {
+            _syncLastErrToast = Date.now();
+            showToast("⚠️ Sync gerade nicht möglich" + (ecode ? " (" + ecode + ")" : "") + " – wird später erneut versucht");
+        }
+        let delay = Math.min(300000, 15000 * Math.pow(2, Math.min(_syncFailCount - 1, 5)));   // 15 s, 30 s, 60 s ... max. 5 Min.
+        if (_syncRetryTimer) clearTimeout(_syncRetryTimer);
+        _syncRetryTimer = setTimeout(() => { _syncRetryTimer = null; if (_syncDirty && syncCode === code) scheduleSyncUpload(); }, delay);
     });
 }
 
@@ -54901,7 +54915,10 @@ function startSyncListener(code) {
         },
         (error) => {
             console.warn("Sync-Verbindung verloren:", error);
-            showToast("⚠️ Sync-Verbindung unterbrochen");
+            if (navigator.onLine !== false && Date.now() - _syncLastErrToast > 600000) {
+                _syncLastErrToast = Date.now();
+                showToast("⚠️ Sync-Verbindung unterbrochen" + (error && error.code ? " (" + error.code + ")" : ""));
+            }
         }
     );
 }
@@ -55940,9 +55957,11 @@ window.onload = async function() {
 <script>
 /* Solange der Ladescreen sichtbar ist, jede Wisch-/Scroll-Geste blockieren (iOS ignoriert overflow:hidden auf html/body teilweise) */
 (function () {
-    var block = function (e) { if (document.querySelector(".app-loading-screen")) e.preventDefault(); };
+    // Ladescreen UND Update-Screen ("Update wird installiert"): nicht wegscrollbar
+    var block = function (e) { if (document.querySelector(".app-loading-screen, .swu-overlay")) e.preventDefault(); };
     document.addEventListener("touchmove", block, { passive: false });
     document.addEventListener("wheel", block, { passive: false });
+    document.addEventListener("scroll", function () { if (document.querySelector(".app-loading-screen, .swu-overlay") && (window.scrollY || window.pageYOffset)) window.scrollTo(0, 0); }, { passive: true });
 })();
 </script><script>
 // ============================================================================
