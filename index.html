@@ -44379,7 +44379,7 @@ function _nlNums(str) {
     return out;
 }
 
-function parseNutritionLabelText(rawText) {
+function parseNutritionLabelText(rawText, opts) {
     let out = {};
     let kj = null;
     let lines = String(rawText || "").split(/\r?\n/);
@@ -44392,7 +44392,24 @@ function parseNutritionLabelText(rawText) {
         let iPor = h.search(/portion|port\.|serving/);
         if (i100 >= 0 && iPor >= 0) { colIdx = i100 < iPor ? 0 : 1; break; }
     }
-    function pickNth(arr) { return arr.length ? parseFloat(arr[Math.min(colIdx, arr.length - 1)][1].replace(",", ".")) : null; }
+    // Zweispaltig? (die meisten Nährstoffzeilen haben 2 Zahlen). Dann darf NIE still die falsche Spalte genommen werden:
+    // fehlt in einer Zeile die Zahl der 100-g-Spalte, gilt der Wert als "nicht erkannt" statt den Portionswert zu uebernehmen.
+    let twoCol = false;
+    {
+        let c1 = 0, c2 = 0;
+        for (let l0 of lines) {
+            let l1 = l0.toLowerCase();
+            if (!/fett|kohlenhydrat|zucker|eiwei|protein|ballast|salz/.test(l1)) continue;
+            let k = _nlNums(l1).length;
+            if (k === 1) c1++; else if (k >= 2) c2++;
+        }
+        twoCol = c2 >= 2 && c2 >= c1;
+    }
+    function pickNth(arr) {
+        if (!arr.length) return null;
+        if (twoCol && arr.length < 2) return null;
+        return parseFloat(arr[Math.min(colIdx, arr.length - 1)][1].replace(",", "."));
+    }
 
     function fixDigits(s) {
         return s.replace(/(\d)[Oo](?=\d|\s*g\b)/g, function (m, d) { return d + "0"; })
@@ -44403,9 +44420,30 @@ function parseNutritionLabelText(rawText) {
         let idx = s.search(labelRe);
         let rest = idx >= 0 ? s.slice(idx).replace(labelRe, "") : s;
         let nums = _nlNums(rest);
+        if (twoCol && nums.length < 2) return undefined;      // Spalte nicht eindeutig -> nicht raten
         if (nums.length) return nums[Math.min(colIdx, nums.length - 1)];
         let v = _nlNum(rest);
         return v !== null ? v : _nlNum(s);
+    }
+
+    // Systematischer Lesefehler: das "g" hinter Gramm-Werten wird als "9" gelesen ("12 g" -> "129g"). Erkennbar daran, dass auffallend
+    // viele Werte der Gramm-Zeilen auf 9 enden (echte Tabellen: ca. 10 %). Dann die 9 abziehen - betroffene Felder bleiben "unsicher".
+    let g9 = false;
+    {
+        let tot = 0, nine = 0;
+        for (let l0 of lines) {
+            let l1 = l0.toLowerCase();
+            if (!/fett|kohlenhydrat|zucker|eiwei|protein|ballast|salz|fettsa|fettsu/.test(l1) || /brennwert|energie|kcal|\bkj\b/.test(l1)) continue;
+            (l1.match(/\d+(?:[.,]\d+)?/g) || []).forEach(t => { tot++; if (/9$/.test(t) && t.replace(/\D/g, "").length >= 2) nine++; });
+        }
+        g9 = tot >= 4 && nine >= 3 && nine / tot >= 0.5;
+    }
+    if (g9 && !(opts && opts.noG9)) {
+        lines = lines.map(l0 => {
+            let l1 = l0.toLowerCase();
+            if (!/fett|kohlenhydrat|zucker|eiwei|protein|ballast|salz|fettsa|fettsu/.test(l1) || /brennwert|energie|kcal|\bkj\b/.test(l1)) return l0;
+            return l0.replace(/(\d)9(?!\d)/g, "$1");
+        });
     }
 
     for (let line of lines) {
@@ -44418,7 +44456,7 @@ function parseNutritionLabelText(rawText) {
 
             if (/brennwert|energie|energy|\bkj\b|kcal/.test(s)) {
                 let vk = pickNth(Array.from(s.matchAll(/(\d+(?:[.,]\d+)?)\s*kcal/g)));
-                let vj = pickNth(Array.from(s.matchAll(/(\d+(?:[.,]\d+)?)\s*kj/g)));
+                let vj = pickNth(Array.from(s.matchAll(/(\d+(?:[.,]\d+)?)\s*[.,]?\s*k[j)3]/g)));
                 if (vk !== null && out.calories === undefined) out.calories = vk;
                 if (vj !== null && kj === null) kj = vj;
                 continue;
@@ -44438,6 +44476,7 @@ function parseNutritionLabelText(rawText) {
     }
     if (out.calories === undefined && kj !== null) out.calories = Math.round(kj / 4.184);
     out._kj = kj;
+    out._g9 = g9;
     return out;
 }
 
@@ -44534,13 +44573,16 @@ function getNutritionOcrWorker() {
     return _nutOcrWorkerPromise;
 }
 
-async function ocrNutritionLabel(dataUrl, onProgress) {
+async function ocrNutritionLabel(dataUrl, onProgress, psm) {
     _nutOcrProgressCb = onProgress || null;
     if (onProgress) onProgress("Texterkennung wird vorbereitet...");
     let worker = await getNutritionOcrWorker();
     try {
-        let res = await withTimeout(worker.recognize(dataUrl), 40000, "Texterkennung antwortet nicht mehr");
-        return (res && res.data && res.data.text) || "";
+        try { await worker.setParameters({ tessedit_pageseg_mode: String(psm || "6"), preserve_interword_spaces: "1" }); } catch (pe) { }
+        let res = await withTimeout(worker.recognize(dataUrl), 60000, "Texterkennung antwortet nicht mehr");
+        let d = (res && res.data) || {};
+        let lines = (d.lines || []).map(l => ({ text: String(l.text || ""), bbox: l.bbox || null }));
+        return { text: d.text || "", lines: lines };
     } catch (e) {
         try { await worker.terminate(); } catch (te) { }
         _nutOcrWorkerPromise = null;
@@ -44673,17 +44715,238 @@ function _nutCropDialog(file) {
 
 function _nutScanFailHtml(e) {
     if (e && e.nutCancel) return "Abgebrochen – du kannst es erneut versuchen oder die Werte von Hand eintragen.";
+    if (e && e.nutQuality) return "⚠️ " + _escapeHtml(e.message);
     return "Scan fehlgeschlagen" + (e && e.message ? " (" + _escapeHtml(e.message) + ")" : "") + " - bitte erneut versuchen oder von Hand eintragen.";
+}
+
+// ===== Absicherung der Tabellen-Erkennung (ohne KI) =====
+// 1) Bildqualitaet pruefen (unscharf / zu dunkel / zu klein)  2) Tabelle automatisch finden und nachzuschneiden
+// 3) ZWEIMAL lesen (andere Bildaufbereitung) - nur Werte, bei denen beide Lesungen uebereinstimmen, gelten als sicher
+// 4) Nur "pro Portion"-Tabellen erkennen  5) Automatisch uebernommen wird nur, wenn alles sicher ist; sonst Pruefen-Ansicht mit orangen Feldern
+function _nutLoadImg(src) {
+    return new Promise((res, rej) => { let i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+}
+async function _nutImageQuality(blob) {
+    let url = URL.createObjectURL(blob), img;
+    try { img = await _nutLoadImg(url); } catch (e) { URL.revokeObjectURL(url); return { problems: [], blocker: null, soft: false }; }
+    URL.revokeObjectURL(url);
+    let nw = img.naturalWidth, nh = img.naturalHeight, sc = Math.min(1, 800 / Math.max(nw, nh));
+    let w = Math.max(8, Math.round(nw * sc)), h = Math.max(8, Math.round(nh * sc));
+    let c = document.createElement("canvas"); c.width = w; c.height = h;
+    let ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, w, h);
+    let px = ctx.getImageData(0, 0, w, h).data, g = new Float32Array(w * h), hist = new Uint32Array(256);
+    for (let i = 0, j = 0; i < px.length; i += 4, j++) { let v = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]; g[j] = v; hist[v | 0]++; }
+    let tot = w * h, acc = 0, lo = 0, hi = 255;
+    for (let i = 0; i < 256; i++) { acc += hist[i]; if (acc > tot * 0.02) { lo = i; break; } }
+    acc = 0;
+    for (let i = 255; i >= 0; i--) { acc += hist[i]; if (acc > tot * 0.02) { hi = i; break; } }
+    // Schaerfe: Varianz des Laplace-Filters
+    let sum = 0, sum2 = 0, n = 0;
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+        let i = y * w + x, l = 4 * g[i] - g[i - 1] - g[i + 1] - g[i - w] - g[i + w];
+        sum += l; sum2 += l * l; n++;
+    }
+    let sharp = n ? (sum2 / n - (sum / n) * (sum / n)) : 0, contrast = hi - lo;
+    let problems = [], blocker = null, soft = false;
+    if (Math.max(nw, nh) < 500) blocker = "Das Foto ist zu klein (zu wenig Pixel).";
+    else if (sharp < _NUT_SHARP_BLOCK) blocker = "Das Foto ist zu unscharf.";
+    else if (contrast < 45) blocker = "Das Foto hat zu wenig Kontrast (zu dunkel oder überbelichtet).";
+    if (!blocker) {
+        if (sharp < _NUT_SHARP_SOFT) { problems.push("Foto etwas unscharf"); soft = true; }
+        if (contrast < 80) { problems.push("Foto kontrastarm"); soft = true; }
+        if (Math.max(nw, nh) < 900) { problems.push("niedrige Auflösung"); soft = true; }
+    }
+    return { problems: problems, blocker: blocker, soft: soft, sharp: sharp, contrast: contrast, w: nw, h: nh };
+}
+var _NUT_SHARP_BLOCK = 25, _NUT_SHARP_SOFT = 90;
+
+// Lokale Binarisierung (Mittelwert im Fenster) - hilft bei Schatten und Verlaeufen
+function _nutBinarizeCanvas(c) {
+    let w = c.width, h = c.height, ctx = c.getContext("2d", { willReadFrequently: true });
+    let d = ctx.getImageData(0, 0, w, h), px = d.data;
+    let ii = new Float64Array((w + 1) * (h + 1));
+    for (let y = 0; y < h; y++) {
+        let row = 0;
+        for (let x = 0; x < w; x++) { row += px[(y * w + x) * 4]; ii[(y + 1) * (w + 1) + x + 1] = ii[y * (w + 1) + x + 1] + row; }
+    }
+    let r = Math.max(12, Math.round(Math.min(w, h) / 24));
+    for (let y = 0; y < h; y++) {
+        let y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1);
+        for (let x = 0; x < w; x++) {
+            let x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1);
+            let area = (x1 - x0) * (y1 - y0);
+            let m = (ii[y1 * (w + 1) + x1] - ii[y0 * (w + 1) + x1] - ii[y1 * (w + 1) + x0] + ii[y0 * (w + 1) + x0]) / area;
+            let i = (y * w + x) * 4, v = px[i] < m * 0.88 ? 0 : 255;
+            px[i] = px[i + 1] = px[i + 2] = v;
+        }
+    }
+    ctx.putImageData(d, 0, 0);
+    return c;
+}
+
+var _NUT_KEY_RE = /brennwert|energie|\bfett|kohlenhydrat|zucker|eiwei|protein|\bsalz|ballaststoff|ges[aä]ttigt|gesaettigt|fetts[aä]ure|kcal/i;
+var _NUT_HEAD_RE = /n[aä]hrwert|100\s*(?:g|ml)|portion|davon|\bkj\b/i;
+// Rahmen um die Tabelle aus den erkannten Zeilen (null = nicht sicher gefunden)
+function _nutFindTableBox(lines, W, H) {
+    let L = (lines || []).filter(l => l.bbox && l.text.trim());
+    let keys = L.filter(l => _NUT_KEY_RE.test(l.text));
+    if (keys.length < 3) return null;
+    let y0 = Math.min.apply(null, keys.map(l => l.bbox.y0)), y1 = Math.max.apply(null, keys.map(l => l.bbox.y1));
+    let lineH = keys.reduce((a, l) => a + (l.bbox.y1 - l.bbox.y0), 0) / keys.length;
+    let part = L.filter(l => {
+        let cy = (l.bbox.y0 + l.bbox.y1) / 2;
+        return (cy >= y0 && cy <= y1) || (_NUT_HEAD_RE.test(l.text) && cy >= y0 - lineH * 3 && cy < y0);
+    });
+    if (part.length < 3) return null;
+    let x0 = Math.min.apply(null, part.map(l => l.bbox.x0)), x1 = Math.max.apply(null, part.map(l => l.bbox.x1));
+    y0 = Math.min.apply(null, part.map(l => l.bbox.y0)); y1 = Math.max.apply(null, part.map(l => l.bbox.y1));
+    let mx = Math.max(12, (x1 - x0) * 0.04), my = Math.max(12, lineH * 0.8);
+    x0 = Math.max(0, x0 - mx); x1 = Math.min(W, x1 + mx); y0 = Math.max(0, y0 - my); y1 = Math.min(H, y1 + my);
+    if ((x1 - x0) * (y1 - y0) > W * H * 0.8) return null;      // Bild ist schon eng zugeschnitten
+    if (x1 - x0 < 120 || y1 - y0 < 80) return null;
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+// Zweite Bildaufbereitung: (auto-)zugeschnitten, hochskaliert, binarisiert
+async function _nutSecondPassImage(preparedUrl, box) {
+    let img = await _nutLoadImg(preparedUrl);
+    let sx = box ? box.x : 0, sy = box ? box.y : 0, sw = box ? box.w : img.width, sh = box ? box.h : img.height;
+    let sc = Math.max(1, Math.min(2.2, 2000 / Math.max(sw, sh)));
+    let c = document.createElement("canvas"); c.width = Math.round(sw * sc); c.height = Math.round(sh * sc);
+    let ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    _nutBinarizeCanvas(c);
+    return c.toDataURL("image/png");
+}
+
+var _NUT_LABELS = { calories: "Kalorien", fat: "Fett", saturatedFat: "ges. Fettsäuren", carbs: "Kohlenhydrate", sugar: "Zucker", fiber: "Ballaststoffe", protein: "Eiweiß", salt: "Salz" };
+
+// Typische OCR-Verwechslung: das "g" hinter dem Wert wird als "9" gelesen ("12 g" -> "129g", "6,1 g" -> "6,19"), oder das Komma fehlt.
+// Kandidaten je Wert: wie gelesen (Kosten 0), letzte 9 weg (1), zusaetzlich Komma eingefuegt (2).
+function _nutCandidates(v) {
+    let out = [[v, 0]], seen = new Set([v]);
+    let add = (x, c) => { x = Math.round(x * 1000) / 1000; if (isFinite(x) && x >= 0 && x <= 100 && !seen.has(x)) { seen.add(x); out.push([x, c]); } };
+    let str = String(v), bases = [[str, 0]];
+    if (/9$/.test(str) && str.replace(".", "").length >= 2) bases.push([str.replace(/9$/, "").replace(/\.$/, ""), 1]);
+    bases.forEach(bc => {
+        let x = bc[0], c = bc[1];
+        if (c === 1) add(parseFloat(x), 1);
+        if (/^\d+$/.test(x) && x.length >= 2) {
+            add(parseInt(x, 10) / 10, c + 2);
+            if (x.length >= 3) add(parseInt(x, 10) / 100, c + 2);
+        }
+    });
+    return out;
+}
+
+// Beide Lesungen abgleichen. Uebereinstimmende, plausible Werte = sicher. Sonst werden Verwechslungen ueber die Energiebilanz aufgeloest
+// (Kalorien muessen zu Fett/Eiweiss/Kohlenhydraten passen); jeder so korrigierte oder nur einmal gelesene Wert bleibt "unsicher" (orange).
+function _nutMergeReads(a, b, ar, br) {
+    let keys = Object.keys(_NUT_LABELS), merged = {}, unsure = new Set(), reads = {};
+    let isN = v => typeof v === "number" && isFinite(v);
+    keys.forEach(k => {
+        let vs = [a[k], b[k]].filter(isN);
+        reads[k] = vs;
+        if (vs.length === 2) {
+            if (Math.abs(vs[0] - vs[1]) <= Math.max(0.06, 0.03 * Math.max(vs[0], vs[1]))) merged[k] = vs[0];
+            else { merged[k] = vs[0]; unsure.add(k); }
+        } else if (vs.length === 1) { merged[k] = vs[0]; unsure.add(k); }
+    });
+    let kj = null;
+    if (isN(a._kj) && isN(b._kj)) kj = Math.abs(a._kj - b._kj) <= Math.max(2, 0.02 * a._kj) ? a._kj : null;
+    else kj = isN(a._kj) ? a._kj : (isN(b._kj) ? b._kj : null);
+    if (kj === null && (isN(a._kj) || isN(b._kj))) unsure.add("calories");
+    if (a._g9 || b._g9) keys.forEach(k => { if (k !== "calories" && typeof merged[k] === "number") unsure.add(k); });
+    let asRead = Object.assign({}, merged, { _kj: kj });
+    let v0 = validateNutrition(asRead);
+    let bad = v0.warnings.filter(w => !/nicht erkannt|Lesungen/.test(w));
+    if (!bad.length) return { values: asRead, unsure: unsure };
+
+    // --- Reparatur: Kernfelder (Kalorien, Fett, Kohlenhydrate, Eiweiss) per Energiebilanz, Rest greedy
+    let cand = {};
+    keys.forEach(k => {
+        let list = [], seen = new Set();
+        (reads[k] || []).forEach(v => _nutCandidates(v).forEach(c => { if (!seen.has(c[0])) { seen.add(c[0]); list.push(c); } }));
+        // unkorrigierte Rohwerte (falls die 9 doch zur Zahl gehoerte, z. B. "29 g")
+        [ar && ar[k], br && br[k]].forEach(v => { if (isN(v) && !seen.has(v)) { seen.add(v); list.push([v, 1]); } });
+        if (k === "calories" && kj) { let kc = Math.round(kj / 4.184); if (!seen.has(kc)) list.push([kc, 0]); }
+        cand[k] = list;
+    });
+    let core = ["calories", "fat", "carbs", "protein"].filter(k => cand[k].length);
+    let others = keys.filter(k => core.indexOf(k) < 0 && cand[k].length);
+    let best = null, ties = 0;
+    let pick = (i, cur, cost) => {
+        if (i === core.length) {
+            let t = Object.assign({}, cur, { _kj: kj });
+            // Nebenfelder: guenstigster Kandidat, der alle Plausibilitaetspruefungen besteht
+            let extra = 0;
+            let clean = x => validateNutrition(x).warnings.filter(m => !/nicht erkannt/.test(m)).length;
+            others.forEach(k => {
+                let sorted = cand[k].slice().sort((x, y) => x[1] - y[1]);
+                let chosen = sorted.find(c => clean(Object.assign({}, t, { [k]: c[0] })) === 0) || sorted[0];
+                t[k] = chosen[0]; extra += chosen[1];
+            });
+            let w = validateNutrition(t).warnings.filter(x => !/nicht erkannt/.test(x)).length;
+            let score = w * 100 + cost + extra;
+            if (!best || score < best.score) { best = { score: score, t: t }; ties = 1; }
+            else if (score === best.score) ties++;
+            return;
+        }
+        let k = core[i];
+        cand[k].forEach(c => { cur[k] = c[0]; pick(i + 1, cur, cost + c[1]); });
+        delete cur[k];
+    };
+    pick(0, {}, 0);
+    if (!best) return { values: asRead, unsure: unsure };
+    let fixed = best.t;
+    keys.forEach(k => { if (fixed[k] !== asRead[k] && typeof fixed[k] === "number") unsure.add(k); });
+    if (ties > 1) core.forEach(k => unsure.add(k));      // mehrere gleich gute Loesungen: nichts ist sicher
+    return { values: fixed, unsure: unsure, repaired: true };
 }
 
 async function _nutScanPipeline(file, say) {
     let cropped = await _nutCropDialog(file);
+    say("Foto wird geprüft...");
+    let q = await _nutImageQuality(cropped);
+    if (q.blocker) { let e = new Error(q.blocker + " Bitte gerade, scharf und nah an der Tabelle neu aufnehmen."); e.nutQuality = true; throw e; }
     say("Foto wird vorbereitet...");
     _nutLabelLastImage = await prepareLabelImageForOcr(cropped);
-    let text = await ocrNutritionLabel(_nutLabelLastImage, say);
-    let res = validateNutrition(parseNutritionLabelText(text));
+    let passA = await ocrNutritionLabel(_nutLabelLastImage, t => say("1/2 · " + t), "6");
+    // Tabelle automatisch finden und die zweite Lesung darauf konzentrieren
+    let dims = await _nutLoadImg(_nutLabelLastImage);
+    let box = _nutFindTableBox(passA.lines, dims.width, dims.height);
+    // Text laeuft bis an den Bildrand? Dann ist die Tabelle vermutlich abgeschnitten (Zahlen am Zeilenende fehlen/sind verkuerzt)
+    let edgeCut = passA.lines.filter(l => l.bbox && _NUT_KEY_RE.test(l.text) && (l.bbox.x1 >= dims.width - 4 || l.bbox.x0 <= 3)).length >= 2;
+    let img2 = await _nutSecondPassImage(_nutLabelLastImage, box);
+    let passB = await ocrNutritionLabel(img2, t => say("2/2 · " + t), "6");
+    let pa = parseNutritionLabelText(passA.text), pb = parseNutritionLabelText(passB.text);
+    let allText = passA.text + "\n" + passB.text;
+
+    let mg = _nutMergeReads(pa, pb, parseNutritionLabelText(passA.text, { noG9: true }), parseNutritionLabelText(passB.text, { noG9: true }));
+    let res = validateNutrition(mg.values);
+    let hasPer100 = /\b1[0oO]0\s*(?:g|ml|q|9)(?![0-9a-z])/i.test(allText);
+    let hasPortion = /portion|port\./i.test(allText);
+    let portionOnly = !hasPer100 && hasPortion;
+    let hint = [];
+    if (portionOnly) {
+        // Nur Portionswerte: wuerden als "pro 100 g" gespeichert und waeren falsch -> nichts uebernehmen
+        res = { values: {}, warnings: ["Es wurde nur eine „pro Portion“-Spalte erkannt, keine „pro 100 g“ – Werte nicht übernommen. Bitte die Seite mit „pro 100 g“ fotografieren oder von Hand eintragen"], suspect: new Set(), ok: false };
+        mg.unsure = new Set();
+    } else {
+        if (!hasPer100) { res.warnings.push("Spalte „pro 100 g“ nicht erkannt – bitte prüfen, dass es keine Portionswerte sind"); Object.keys(_NUT_LABELS).forEach(k => mg.unsure.add(k)); }
+        let uns = Array.from(mg.unsure).filter(k => typeof res.values[k] === "number");
+        if (uns.length) res.warnings.push("Bei " + uns.map(k => _NUT_LABELS[k]).join(", ") + " waren die beiden Lesungen nicht einig bzw. nur eine hat den Wert gefunden");
+        uns.forEach(k => res.suspect.add(k));
+        res.ok = res.warnings.length === 0;
+    }
+    if (edgeCut) { res.warnings.push("Die Tabelle scheint am Bildrand abgeschnitten zu sein – Zahlen am Zeilenende können fehlen"); res.ok = false; }
+    // Bei JEDER Unsicherheit alle gelesenen Felder zur Kontrolle markieren (nicht nur die auffaelligen)
+    if (!res.ok && !portionOnly) Object.keys(_NUT_LABELS).forEach(k => { if (typeof res.values[k] === "number") res.suspect.add(k); });
+    if (q.problems.length) hint = q.problems;
     let usedAi = false;
-    if (!res.ok && hasAnyAiKey()) {
+    if (!res.ok && hasAnyAiKey() && !portionOnly) {
         try {
             say("Unsicher erkannt - KI liest die Tabelle nach...");
             let aiRes = validateNutrition(await aiReadNutritionLabel(_nutLabelLastImage));
@@ -44692,12 +44955,15 @@ async function _nutScanPipeline(file, say) {
             console.warn("KI-Nachlesen fehlgeschlagen, OCR-Ergebnis bleibt:", e);
         }
     }
-    return { res: res, usedAi: usedAi };
+    let confidence = (!usedAi && res.ok && !q.soft && hasPer100 && !portionOnly) ? "high" : "review";
+    return { res: res, usedAi: usedAi, confidence: confidence, quality: q, hint: hint, portionOnly: portionOnly, tableFound: !!box };
 }
 
 function _nutLabelStatusHtml(r) {
-    if (r.res.ok) return r.usedAi ? "✓ Per KI nachgelesen - bitte kurz mit der Packung vergleichen." : "✓ Werte erkannt - bitte kurz mit der Packung vergleichen, dann \"übernehmen\".";
-    return "⚠️ " + r.res.warnings.map(_escapeHtml).join(" · ") + " - orange Felder bitte prüfen." +
+    let hint = (r.hint && r.hint.length) ? " (" + r.hint.map(_escapeHtml).join(", ") + ")" : "";
+    if (r.res.ok && r.confidence === "high") return "✓ Zweimal gelesen, beide Lesungen stimmen überein - bitte kurz mit der Packung vergleichen, dann \"übernehmen\".";
+    if (r.res.ok) return (r.usedAi ? "✓ Per KI nachgelesen" : "✓ Werte erkannt") + hint + " - bitte mit der Packung vergleichen, bevor du speicherst.";
+    return "⚠️ " + r.res.warnings.map(_escapeHtml).join(" · ") + hint + (r.portionOnly ? "" : " - orange Felder bitte prüfen.") +
         (hasAnyAiKey() ? " (Auch die KI war unsicher.)" : " Tipp: Foto gerade, scharf und nah an der Tabelle neu aufnehmen.");
 }
 
@@ -44744,12 +45010,19 @@ async function handleListScanPhoto(inputEl) {
     try {
         say("Foto wird vorbereitet...");
         let r = await _nutScanPipeline(file, say);
-        if (r.res.ok) {
+        if (r.confidence === "high") {
             let dv = _nutValuesToDraft(r.res.values);
+            let prevIng = alt < 0 ? ing.nutrition100g : undefined, prevPx = _pxNutrition(tName);
             if (alt < 0) ing.nutrition100g = dv;
             _pxSetNutrition(tName, dv);
             _refreshIngredientNutritionModal();
-            showToast(tName + ": Werte übernommen" + (r.usedAi ? " (per KI)" : "") + " ✓");
+            let v = r.res.values;
+            showToast(tName + ": " + (v.calories !== undefined ? Math.round(v.calories) + " kcal" : "?") + ", " + (v.fat !== undefined ? v.fat : "?") + " g Fett, " + (v.carbs !== undefined ? v.carbs : "?") + " g KH, " + (v.protein !== undefined ? v.protein : "?") + " g Eiweiß übernommen ✓",
+                { label: "Rückgängig", fn: function () {
+                    if (alt < 0) { if (prevIng) ing.nutrition100g = prevIng; else delete ing.nutrition100g; }
+                    _pxSetNutrition(tName, prevPx || null);
+                    _refreshIngredientNutritionModal();
+                } });
         } else {
             openIngredientNutritionEditor(idx, alt);
             _nutLabelFill(r.res.values, r.res.suspect);
